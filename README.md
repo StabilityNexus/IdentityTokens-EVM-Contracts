@@ -1,66 +1,104 @@
-## Foundry
+# Mini-DIT — Experimental Decentralized Identity Tokens Prototype
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This repository branch (`mini-dit-prototype`) contains a **lightweight experimental prototype** of **Decentralized Identity Tokens (DIT)** developed as part of early exploration for the **DIT 2026** research direction under Stability Nexus discussions.
 
-Foundry consists of:
+⚠️ **Disclaimer**  
+This is **not a production-ready implementation**.  
+It is a minimal research prototype built to explore design and security trade-offs around decentralized identity tokens.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+---
 
-## Documentation
+## 🎯 Prototype Goals
 
-https://book.getfoundry.sh/
+This mini-project implements:
 
-## Usage
+- Self-issued Identity NFTs (ERC-721)
+- On-chain identity metadata references
+- On-chain endorsements between identities
+- Revocable endorsements
+- Identity compromise / revocation signaling
+- Transferable identity tokens
+- Foundry-based automated test suite
 
-### Build
+---
 
-```shell
-$ forge build
-```
+## ❌ Out of Scope
 
-### Test
+- Zero-knowledge proofs
+- Formal claim verification schemas
+- Governance or reputation scoring
+- Sybil-resistance mechanisms
+- Production security hardening
 
-```shell
-$ forge test
-```
+---
 
-### Format
+## 🏗️ Tech Stack
 
-```shell
-$ forge fmt
-```
+### Smart Contracts
+- Solidity ^0.8.20  
+- OpenZeppelin ERC-721  
+- Foundry (Forge, Cast, Anvil)
 
-### Gas Snapshots
+### Testing
+- Foundry Test Framework
 
-```shell
-$ forge snapshot
-```
+---
 
-### Anvil
+## 📁 Project Structure
 
-```shell
-$ anvil
-```
+src/
+└── MiniDIT.sol # Identity Token smart contract
 
-### Deploy
+test/
+└── MiniDIT.t.sol # Foundry test suite
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+foundry.toml # Foundry configuration
 
-### Cast
 
-```shell
-$ cast <subcommand>
-```
+---
 
-### Help
+## ⚙️ Prerequisites
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- Node.js 18+
+- Foundry installed  
+  https://book.getfoundry.sh/getting-started/installation
+
+---
+
+## 🚀 Installation
+
+Clone repository and switch to prototype branch:
+
+```bash
+git clone https://github.com/<your-username>/IdentityTokens-EVM-Contracts.git
+cd IdentityTokens-EVM-Contracts
+git checkout mini-dit-prototype
+Install dependencies:
+
+forge install
+🧪 Run Tests
+forge test
+Expected output:
+
+All MiniDIT tests passing
+🔍 Smart Contract Overview
+Mint Identity NFT
+Users self-issue identity tokens:
+
+mintIdentity(string metadataURI)
+Endorse Another Identity
+endorse(fromTokenId, toTokenId, tag)
+Revoke Endorsement
+revokeEndorsement(toTokenId, index)
+Mark Identity as Compromised
+markCompromised(tokenId)
+🧠 Research Context
+This prototype is based on ongoing discussions around:
+
+DIT (Decentralized Identity Tokens)
+
+TNT (Trust Network Tokens)
+
+VouchMe-style identity endorsement flows
+
+Under the Stability Nexus / The Stable Order research direction.
