@@ -28,13 +28,21 @@ contract MiniDIT is ERC721 {
 
     constructor() ERC721("MiniDIT", "DIT") {}
 
+    // -------- Identity Mint --------
     function mintIdentity(string calldata metadataURI) external {
         uint256 tokenId = nextTokenId++;
-        _mint(msg.sender, tokenId);
+        _safeMint(msg.sender, tokenId);
         identities[tokenId] = Identity(metadataURI, false);
         emit IdentityMinted(msg.sender, tokenId);
     }
 
+    // -------- ERC721 Metadata --------
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), "URI query for nonexistent token");
+        return identities[tokenId].metadataURI;
+    }
+
+    // -------- Endorsements --------
     function endorse(
         uint256 fromTokenId,
         uint256 toTokenId,
@@ -42,7 +50,7 @@ contract MiniDIT is ERC721 {
     ) external {
         require(ownerOf(fromTokenId) == msg.sender, "Not owner of fromToken");
 
-        // ownerOf(toTokenId) will revert automatically if token doesn't exist
+        // Will revert if toTokenId does not exist
         ownerOf(toTokenId);
 
         require(!identities[fromTokenId].compromised, "From identity compromised");
@@ -57,10 +65,12 @@ contract MiniDIT is ERC721 {
     function revokeEndorsement(uint256 toTokenId, uint256 index) external {
         Endorsement storage e = endorsements[toTokenId][index];
         require(ownerOf(e.fromTokenId) == msg.sender, "Not endorser");
+
         e.revoked = true;
         emit EndorsementRevoked(e.fromTokenId, toTokenId);
     }
 
+    // -------- Compromise Signaling --------
     function markCompromised(uint256 tokenId) external {
         require(ownerOf(tokenId) == msg.sender, "Not owner");
         identities[tokenId].compromised = true;

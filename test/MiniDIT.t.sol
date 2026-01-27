@@ -16,7 +16,9 @@ contract MiniDITTest is Test {
     function testMintIdentity() public {
         vm.prank(alice);
         dit.mintIdentity("ipfs://alice");
+
         assertEq(dit.ownerOf(0), alice);
+        assertEq(dit.tokenURI(0), "ipfs://alice");
     }
 
     function testEndorsementFlow() public {
