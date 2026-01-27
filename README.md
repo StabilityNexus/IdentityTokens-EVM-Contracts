@@ -24,11 +24,11 @@ This mini-project implements:
 
 ## ❌ Out of Scope
 
-- Zero-knowledge proofs
-- Formal claim verification schemas
-- Governance or reputation scoring
-- Sybil-resistance mechanisms
-- Production security hardening
+- Zero-knowledge proofs  
+- Formal claim verification schemas  
+- Governance or reputation scoring  
+- Sybil-resistance mechanisms  
+- Production security hardening  
 
 ---
 
@@ -59,9 +59,9 @@ foundry.toml # Foundry configuration
 
 ## ⚙️ Prerequisites
 
-- Node.js 18+
+- Node.js 18+  
 - Foundry installed  
-  https://book.getfoundry.sh/getting-started/installation
+  [Foundry Installation Guide](https://book.getfoundry.sh/getting-started/installation)
 
 ---
 
@@ -83,8 +83,6 @@ Expected output:
 All MiniDIT tests passing
 🔍 Smart Contract Overview
 Mint Identity NFT
-Users self-issue identity tokens:
-
 mintIdentity(string metadataURI)
 Endorse Another Identity
 endorse(fromTokenId, toTokenId, tag)
@@ -102,3 +100,15 @@ TNT (Trust Network Tokens)
 VouchMe-style identity endorsement flows
 
 Under the Stability Nexus / The Stable Order research direction.
+
+
+---
+
+# ✅ After pasting
+
+Run:
+
+```bash
+git add README.md
+git commit -m "Fix README markdown formatting and links"
+git push origin mini-dit-prototype
