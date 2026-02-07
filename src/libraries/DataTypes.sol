@@ -10,8 +10,16 @@ library DataTypes {
         uint256 revokedAt;
     }
 
+    struct IdentityProfile {
+        string name;
+        string socialLinks;
+        uint256 birthDate;
+        string nationality;
+        string residence;
+    }
+
     struct IdentityState {
-        bool isCompromised;
+        bool isCompromised; // logic for recovery
         address backupWallet;
         address pendingBackupWallet;
         uint256 backupUnlockTime;
