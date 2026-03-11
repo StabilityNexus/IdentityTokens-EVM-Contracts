@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test} from "forge-std/Test.sol";
-import {TNT} from "../src/TNT.sol";
-import {DataTypes} from "../src/libraries/DataTypes.sol";
-import {Errors} from "../src/libraries/Errors.sol";
-import {Events} from "../src/libraries/Events.sol";
+import { Test } from "forge-std/Test.sol";
+import { TNT } from "../src/TNT.sol";
+import { DataTypes } from "../src/libraries/DataTypes.sol";
+import { Errors } from "../src/libraries/Errors.sol";
+import { Events } from "../src/libraries/Events.sol";
 
 contract TNTTest is Test {
     TNT public tnt;
@@ -22,6 +22,7 @@ contract TNTTest is Test {
     event BackupUpdated(uint256 indexed tokenId, address newBackup);
     event IdentityRecovered(uint256 indexed tokenId, address newOwner);
     event IdentityCompromiseCleared(uint256 indexed tokenId);
+    event TokenURISet(uint256 indexed tokenId, string uri);
 
     function setUp() public {
         vm.startPrank(owner);
@@ -30,84 +31,78 @@ contract TNTTest is Test {
     }
 
     function test_IssueToken() public {
-        vm.startPrank(owner);
+        vm.startPrank(user1);
         vm.expectEmit(true, true, false, true);
         emit IdentityCreated(1, user1);
-        tnt.issueToken(user1);
+        uint256 tokenId = tnt.issueToken();
+        assertEq(tokenId, 1);
         assertEq(tnt.ownerOf(1), user1);
-        assertEq(tnt.tokenIssuers(1), owner);
-        vm.stopPrank();
-    }
-
-    function test_RevertIssueToZeroAddress() public {
-        vm.startPrank(owner);
-        vm.expectRevert(Errors.TargetInvalid.selector);
-        tnt.issueToken(address(0));
+        // DIT spec: self-issued — issuer == caller
+        assertEq(tnt.tokenIssuers(1), user1);
         vm.stopPrank();
     }
 
     function test_SetAndGetAttribute() public {
-        vm.prank(owner);
-        tnt.issueToken(user1);
+        vm.prank(user1);
+        tnt.issueToken();
 
         vm.startPrank(user1);
         bytes32 key = keccak256("name");
         bytes memory val = "Alice";
-        
+
         vm.expectEmit(true, true, false, true);
         emit AttributeSet(1, key, val);
         tnt.setAttribute(1, key, val);
-        
+
         assertEq(tnt.getAttribute(1, key), val);
         vm.stopPrank();
     }
 
     function test_EndorsementLifecycle() public {
-        vm.startPrank(owner);
-        tnt.issueToken(user1);
-        tnt.issueToken(user2);
-        vm.stopPrank();
+        vm.prank(user1);
+        tnt.issueToken();
+        vm.prank(user2);
+        tnt.issueToken();
 
         vm.startPrank(user1);
         bytes32 connType = keccak256("friend");
-        
+
         vm.expectEmit(true, true, false, true);
         emit EndorsementGiven(1, 2, connType, 0);
         tnt.giveEndorsement(1, 2, connType, 0);
 
         assertTrue(tnt.isEndorsementActive(1, 2, 0));
-        
+
         vm.expectEmit(true, true, false, true);
         emit EndorsementRevoked(1, 2, 0);
         tnt.revokeEndorsement(1, 2, 0);
-        
+
         assertFalse(tnt.isEndorsementActive(1, 2, 0));
         vm.stopPrank();
     }
 
     function test_Pagination() public {
-        vm.startPrank(owner);
-        tnt.issueToken(user1);
-        tnt.issueToken(user2);
-        vm.stopPrank();
+        vm.prank(user1);
+        tnt.issueToken();
+        vm.prank(user2);
+        tnt.issueToken();
 
         vm.startPrank(user1);
-        for(uint i = 0; i < 5; i++) {
+        for (uint i = 0; i < 5; i++) {
             tnt.giveEndorsement(1, 2, bytes32(uint256(i)), 0);
         }
         vm.stopPrank();
 
         DataTypes.Endorsement[] memory page = tnt.getEndorsements(2, 0, 3);
         assertEq(page.length, 3);
-        
+
         DataTypes.Endorsement[] memory page2 = tnt.getEndorsements(2, 3, 10);
         assertEq(page2.length, 2); // clamped
     }
 
     function test_SoulboundTransferReverts() public {
-        vm.startPrank(owner);
-        tnt.issueToken(user1);
-        vm.stopPrank();
+        vm.prank(user1);
+        tnt.issueToken();
 
         vm.startPrank(user1);
         vm.expectRevert("Soulbound: Transfer failed");
@@ -116,9 +111,8 @@ contract TNTTest is Test {
     }
 
     function test_BackupAndRecovery() public {
-        vm.startPrank(owner);
-        tnt.issueToken(user1);
-        vm.stopPrank();
+        vm.prank(user1);
+        tnt.issueToken();
 
         // 1. Initiate backup update
         vm.startPrank(user1);
@@ -152,5 +146,76 @@ contract TNTTest is Test {
         assertEq(tnt.ownerOf(1), user2);
         state = tnt.getIdentityState(1);
         assertFalse(state.isCompromised);
+    }
+
+    function test_SetAndGetTokenURI() public {
+        vm.prank(user1);
+        tnt.issueToken();
+
+        vm.startPrank(user1);
+        vm.expectEmit(true, false, false, true);
+        emit TokenURISet(1, "ipfs://QmTest/1");
+        tnt.setTokenURI(1, "ipfs://QmTest/1");
+        vm.stopPrank();
+
+        assertEq(tnt.tokenURI(1), "ipfs://QmTest/1");
+    }
+
+    function test_GetEndorsementCount() public {
+        vm.prank(user1);
+        tnt.issueToken();
+        vm.prank(user2);
+        tnt.issueToken();
+
+        assertEq(tnt.getEndorsementCount(2), 0);
+        assertEq(tnt.getGivenEndorsementCount(1), 0);
+
+        vm.prank(user1);
+        tnt.giveEndorsement(1, 2, keccak256("friend"), 0);
+
+        assertEq(tnt.getEndorsementCount(2), 1);
+        assertEq(tnt.getGivenEndorsementCount(1), 1);
+    }
+
+    function test_GetGivenEndorsements() public {
+        vm.prank(user1);
+        tnt.issueToken();
+        vm.prank(user2);
+        tnt.issueToken();
+
+        vm.prank(user1);
+        tnt.giveEndorsement(1, 2, keccak256("colleague"), 0);
+
+        DataTypes.GivenEndorsement[] memory given = tnt.getGivenEndorsements(1, 0, 1);
+        assertEq(given.length, 1);
+        assertEq(given[0].toTokenId, 2);
+        assertEq(given[0].endorsementIndex, 0);
+    }
+
+    function test_ReverseIndexConsistency() public {
+        vm.prank(user1);
+        tnt.issueToken(); // tokenId 1
+        vm.prank(user2);
+        tnt.issueToken(); // tokenId 2
+        address user3 = address(5);
+        vm.prank(user3);
+        tnt.issueToken(); // tokenId 3
+
+        vm.startPrank(user1);
+        tnt.giveEndorsement(1, 2, keccak256("friend"), 0);
+        tnt.giveEndorsement(1, 3, keccak256("colleague"), 0);
+        vm.stopPrank();
+
+        // token 1 has given 2 endorsements
+        assertEq(tnt.getGivenEndorsementCount(1), 2);
+        // token 2 has received 1 endorsement
+        assertEq(tnt.getEndorsementCount(2), 1);
+        // token 3 has received 1 endorsement
+        assertEq(tnt.getEndorsementCount(3), 1);
+
+        // verify forward and reverse index agree
+        DataTypes.GivenEndorsement[] memory given = tnt.getGivenEndorsements(1, 0, 2);
+        DataTypes.Endorsement[] memory recv2 = tnt.getEndorsements(2, 0, 1);
+        assertEq(recv2[given[0].endorsementIndex].endorserTokenId, 1);
     }
 }

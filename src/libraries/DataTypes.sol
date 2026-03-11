@@ -10,6 +10,14 @@ library DataTypes {
         uint256 revokedAt;
     }
 
+    /// @notice Tracks an endorsement given by a token (reverse index).
+    /// @dev Stored in `_givenEndorsements[fromId]` to enable efficient
+    ///      "which identities has fromId endorsed?" queries required by DIT spec.
+    struct GivenEndorsement {
+        uint256 toTokenId;
+        uint256 endorsementIndex; // index in _endorsements[toTokenId]
+    }
+
     struct IdentityState {
         bool isCompromised;
         address backupWallet;

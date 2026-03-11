@@ -11,4 +11,5 @@ library Events {
     event IdentityRecovered(uint256 indexed tokenId, address newOwner);
     event IdentityCreated(uint256 indexed tokenId, address indexed owner);
     event IdentityCompromiseCleared(uint256 indexed tokenId);
+    event TokenURISet(uint256 indexed tokenId, string uri);
 }

@@ -13,7 +13,11 @@ contract TNT is ERC721, Ownable {
     mapping(uint256 => mapping(bytes32 => bytes)) private _attributes;
     mapping(uint256 => DataTypes.IdentityState) public identityState;
     mapping(uint256 => DataTypes.Endorsement[]) private _endorsements;
-    
+    mapping(uint256 => string) private _tokenURIs;
+    /// @notice Reverse index: tracks all endorsements given BY a token.
+    /// @dev Satisfies DIT spec: "efficient to retrieve which identities have been endorsed by a given identity".
+    mapping(uint256 => DataTypes.GivenEndorsement[]) private _givenEndorsements;
+
     uint256 public constant MAX_ATTRIBUTE_SIZE = 1024;
     uint256 public constant MAX_PAGE_SIZE = 100;
 
@@ -29,16 +33,23 @@ contract TNT is ERC721, Ownable {
         _;
     }
 
-    function issueToken(address to) external onlyOwner {
-        if (to == address(0)) revert Errors.TargetInvalid();
+    /// @notice Self-issues an identity token to the caller.
+    /// @dev Permissionless per DIT spec: "anyone can self-issue a token".
+    /// @return tokenId The newly minted token ID.
+    function issueToken() external returns (uint256) {
         _nextTokenId++;
         uint256 tokenId = _nextTokenId;
         tokenIssuers[tokenId] = msg.sender;
-        _safeMint(to, tokenId);
-        emit Events.IdentityCreated(tokenId, to);
+        _safeMint(msg.sender, tokenId);
+        emit Events.IdentityCreated(tokenId, msg.sender);
+        return tokenId;
     }
 
-    function setAttribute(uint256 tokenId, bytes32 keyHash, bytes calldata value) external onlyTokenOwner(tokenId) notCompromised(tokenId) {
+    function setAttribute(
+        uint256 tokenId,
+        bytes32 keyHash,
+        bytes calldata value
+    ) external onlyTokenOwner(tokenId) notCompromised(tokenId) {
         if (value.length > MAX_ATTRIBUTE_SIZE) revert Errors.PageTooLarge(); // re-using error or could use a new one, but let's stick to size guard
         _attributes[tokenId][keyHash] = value;
         emit Events.AttributeSet(tokenId, keyHash, value);
@@ -48,31 +59,59 @@ contract TNT is ERC721, Ownable {
         return _attributes[tokenId][keyHash];
     }
 
+    /// @notice Sets the ERC-721 metadata URI for a token.
+    /// @dev Allows frontend and wallets to resolve off-chain or on-chain metadata.
+    function setTokenURI(
+        uint256 tokenId,
+        string calldata uri
+    ) external onlyTokenOwner(tokenId) notCompromised(tokenId) {
+        _tokenURIs[tokenId] = uri;
+        emit Events.TokenURISet(tokenId, uri);
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        return _tokenURIs[tokenId];
+    }
+
     function getIdentityState(uint256 tokenId) external view returns (DataTypes.IdentityState memory) {
         return identityState[tokenId];
     }
 
-    function giveEndorsement(uint256 fromId, uint256 toId, bytes32 typeHash, uint256 expiry) external onlyTokenOwner(fromId) notCompromised(fromId) notCompromised(toId) {
+    function giveEndorsement(
+        uint256 fromId,
+        uint256 toId,
+        bytes32 typeHash,
+        uint256 expiry
+    ) external onlyTokenOwner(fromId) notCompromised(fromId) notCompromised(toId) {
         if (fromId == toId) revert Errors.SelfEndorsement();
-        
+
         // Check already endorsed
         DataTypes.Endorsement[] storage endorsements = _endorsements[toId];
         for (uint256 i = 0; i < endorsements.length; i++) {
-            if (endorsements[i].endorserTokenId == fromId &&
+            if (
+                endorsements[i].endorserTokenId == fromId &&
                 endorsements[i].connectionType == typeHash &&
                 endorsements[i].revokedAt == 0 &&
-                (endorsements[i].validUntil == 0 || endorsements[i].validUntil > block.timestamp)) {
+                (endorsements[i].validUntil == 0 || endorsements[i].validUntil > block.timestamp)
+            ) {
                 revert Errors.AlreadyEndorsed();
             }
         }
 
-        endorsements.push(DataTypes.Endorsement({
-            endorserTokenId: fromId,
-            connectionType: typeHash,
-            timestamp: block.timestamp,
-            validUntil: expiry,
-            revokedAt: 0
-        }));
+        endorsements.push(
+            DataTypes.Endorsement({
+                endorserTokenId: fromId,
+                connectionType: typeHash,
+                timestamp: block.timestamp,
+                validUntil: expiry,
+                revokedAt: 0
+            })
+        );
+
+        // Populate reverse index so callers can query "which tokens has fromId endorsed?"
+        _givenEndorsements[fromId].push(
+            DataTypes.GivenEndorsement({ toTokenId: toId, endorsementIndex: endorsements.length - 1 })
+        );
 
         emit Events.EndorsementGiven(fromId, toId, typeHash, expiry);
     }
@@ -93,14 +132,23 @@ contract TNT is ERC721, Ownable {
         if (endorsements[index].endorserTokenId != fromId) return false;
         if (endorsements[index].revokedAt != 0) return false;
         if (endorsements[index].validUntil != 0 && endorsements[index].validUntil <= block.timestamp) return false;
-        
+
         // Also check if endorser is compromised
         if (identityState[fromId].isCompromised) return false;
 
         return true;
     }
 
-    function getEndorsements(uint256 tokenId, uint256 start, uint256 end) external view returns (DataTypes.Endorsement[] memory) {
+    function getEndorsementCount(uint256 tokenId) external view returns (uint256) {
+        return _endorsements[tokenId].length;
+    }
+
+    /// @notice Returns a paginated slice of endorsements received by `tokenId`.
+    function getEndorsements(
+        uint256 tokenId,
+        uint256 start,
+        uint256 end
+    ) external view returns (DataTypes.Endorsement[] memory) {
         DataTypes.Endorsement[] storage allEndorsements = _endorsements[tokenId];
         if (start > allEndorsements.length) revert Errors.IndexOutOfBounds();
         if (end > allEndorsements.length) {
@@ -114,6 +162,32 @@ contract TNT is ERC721, Ownable {
         DataTypes.Endorsement[] memory result = new DataTypes.Endorsement[](count);
         for (uint256 i = 0; i < count; i++) {
             result[i] = allEndorsements[start + i];
+        }
+        return result;
+    }
+
+    function getGivenEndorsementCount(uint256 tokenId) external view returns (uint256) {
+        return _givenEndorsements[tokenId].length;
+    }
+
+    /// @notice Returns a paginated slice of endorsements given BY `tokenId`.
+    /// @dev Satisfies DIT spec reverse lookup requirement.
+    function getGivenEndorsements(
+        uint256 tokenId,
+        uint256 start,
+        uint256 end
+    ) external view returns (DataTypes.GivenEndorsement[] memory) {
+        DataTypes.GivenEndorsement[] storage all = _givenEndorsements[tokenId];
+        if (start > all.length) revert Errors.IndexOutOfBounds();
+        if (end > all.length) {
+            end = all.length;
+        }
+        if (end < start) revert Errors.IndexOutOfBounds();
+        uint256 count = end - start;
+        if (count > MAX_PAGE_SIZE) revert Errors.PageTooLarge();
+        DataTypes.GivenEndorsement[] memory result = new DataTypes.GivenEndorsement[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = all[start + i];
         }
         return result;
     }
