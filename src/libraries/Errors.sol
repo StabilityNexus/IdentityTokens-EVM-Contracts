@@ -15,4 +15,6 @@ library Errors {
     error NotBackupWallet();
     error AlreadyHasIdentity();
     error DuplicateEndorsement();
+    error AlreadyEndorsed();
+    error PageTooLarge();
 }

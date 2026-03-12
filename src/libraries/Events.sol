@@ -9,4 +9,5 @@ library Events {
     event BackupUpdateInitiated(uint256 indexed tokenId, address newBackup, uint256 unlockTime);
     event BackupUpdated(uint256 indexed tokenId, address newBackup);
     event IdentityRecovered(uint256 indexed tokenId, address newOwner);
+    event TokenURISet(uint256 indexed tokenId, string uri);
 }

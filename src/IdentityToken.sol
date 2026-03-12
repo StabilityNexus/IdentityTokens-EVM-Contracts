@@ -20,8 +20,16 @@ contract IdentityToken is ERC721 {
     // tokenId => attribute keyHash => attribute value
     mapping(uint256 => mapping(bytes32 => bytes)) public attributes;
 
-    // tokenId => array of Endorsements
+    // tokenId => array of Endorsements (forward index: who endorsed toTokenId)
     mapping(uint256 => DataTypes.Endorsement[]) public endorsements;
+
+    // reverse index: toTokenId entries given BY fromTokenId
+    mapping(uint256 => DataTypes.GivenEndorsement[]) private _givenEndorsements;
+
+    // tokenId => tokenURI string
+    mapping(uint256 => string) private _tokenURIs;
+
+    uint256 public constant MAX_PAGE_SIZE = 100;
 
     modifier onlyTokenOwner(uint256 tokenId) {
         if (ownerOf(tokenId) != msg.sender) revert Errors.NotTokenOwner();
@@ -120,6 +128,104 @@ contract IdentityToken is ERC721 {
 
         endorsements[toTokenId].push(newEndorsement);
 
+        // populate reverse index so callers can efficiently query "which identities
+        // has fromTokenId endorsed?" — required by DIT spec.
+        _givenEndorsements[fromTokenId].push(
+            DataTypes.GivenEndorsement({
+                toTokenId: toTokenId,
+                endorsementIndex: endorsements[toTokenId].length - 1
+            })
+        );
+
         emit Events.EndorsementGiven(fromTokenId, toTokenId, connectionType, validUntil);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // tokenURI support
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @dev Sets the ERC-721 metadata URI for a token.
+     *      Allows wallets and the frontend integration layer to resolve metadata.
+     */
+    function setTokenURI(
+        uint256 tokenId,
+        string calldata uri
+    ) external onlyTokenOwner(tokenId) notCompromised(tokenId) {
+        _tokenURIs[tokenId] = uri;
+        emit Events.TokenURISet(tokenId, uri);
+    }
+
+    /**
+     * @dev Returns the metadata URI for a token (ERC-721 standard override).
+     */
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        return _tokenURIs[tokenId];
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Endorsement helpers — forward + reverse indexes
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @dev Returns the total number of endorsements received by tokenId.
+     */
+    function getEndorsementCount(uint256 tokenId) external view returns (uint256) {
+        return endorsements[tokenId].length;
+    }
+
+    /**
+     * @dev Returns a paginated slice of endorsements received by tokenId.
+     *      start is inclusive, end is exclusive. end is clamped to array length.
+     */
+    function getEndorsements(
+        uint256 tokenId,
+        uint256 start,
+        uint256 end
+    ) external view returns (DataTypes.Endorsement[] memory) {
+        DataTypes.Endorsement[] storage all = endorsements[tokenId];
+        if (start > all.length) revert Errors.IndexOutOfBounds();
+        if (end > all.length) end = all.length;
+        if (end < start) revert Errors.IndexOutOfBounds();
+
+        uint256 count = end - start;
+        if (count > MAX_PAGE_SIZE) revert Errors.PageTooLarge();
+
+        DataTypes.Endorsement[] memory result = new DataTypes.Endorsement[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = all[start + i];
+        }
+        return result;
+    }
+
+    /**
+     * @dev Returns the total number of endorsements given BY tokenId.
+     */
+    function getGivenEndorsementCount(uint256 tokenId) external view returns (uint256) {
+        return _givenEndorsements[tokenId].length;
+    }
+
+    /**
+     * @dev Returns a paginated slice of endorsements given BY tokenId.
+     *      Satisfies DIT spec reverse-lookup requirement.
+     */
+    function getGivenEndorsements(
+        uint256 tokenId,
+        uint256 start,
+        uint256 end
+    ) external view returns (DataTypes.GivenEndorsement[] memory) {
+        DataTypes.GivenEndorsement[] storage all = _givenEndorsements[tokenId];
+        if (start > all.length) revert Errors.IndexOutOfBounds();
+        if (end > all.length) end = all.length;
+        if (end < start) revert Errors.IndexOutOfBounds();
+
+        uint256 count = end - start;
+        if (count > MAX_PAGE_SIZE) revert Errors.PageTooLarge();
+
+        DataTypes.GivenEndorsement[] memory result = new DataTypes.GivenEndorsement[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = all[start + i];
+        }
+        return result;
     }
 }
