@@ -23,6 +23,9 @@ contract IdentityToken is ERC721 {
     // tokenId => array of Endorsements (forward index: who endorsed toTokenId)
     mapping(uint256 => DataTypes.Endorsement[]) public endorsements;
 
+    // O(1) active-endorsement guard: toTokenId => fromTokenId => connectionType => bool
+    mapping(uint256 => mapping(uint256 => mapping(bytes32 => bool))) private _activeEndorsements;
+
     // reverse index: toTokenId entries given BY fromTokenId
     mapping(uint256 => DataTypes.GivenEndorsement[]) private _givenEndorsements;
 
@@ -105,18 +108,7 @@ contract IdentityToken is ERC721 {
         if (fromTokenId == toTokenId) revert Errors.SelfEndorsement();
         if (_ownerOf(toTokenId) == address(0)) revert Errors.TargetInvalid();
 
-        DataTypes.Endorsement[] storage list = endorsements[toTokenId];
-
-        // prevent duplicate active endorsements
-        for (uint256 i = 0; i < list.length; i++) {
-            DataTypes.Endorsement storage e = list[i];
-
-            bool active = e.revokedAt == 0 && (e.validUntil == 0 || e.validUntil >= block.timestamp);
-
-            if (active && e.endorserTokenId == fromTokenId && e.connectionType == connectionType) {
-                revert Errors.DuplicateEndorsement();
-            }
-        }
+        if (_activeEndorsements[toTokenId][fromTokenId][connectionType]) revert Errors.DuplicateEndorsement();
 
         DataTypes.Endorsement memory newEndorsement = DataTypes.Endorsement({
             endorserTokenId: fromTokenId,
@@ -128,13 +120,13 @@ contract IdentityToken is ERC721 {
 
         endorsements[toTokenId].push(newEndorsement);
 
+        // mark active for O(1) duplicate guard
+        _activeEndorsements[toTokenId][fromTokenId][connectionType] = true;
+
         // populate reverse index so callers can efficiently query "which identities
         // has fromTokenId endorsed?" — required by DIT spec.
         _givenEndorsements[fromTokenId].push(
-            DataTypes.GivenEndorsement({
-                toTokenId: toTokenId,
-                endorsementIndex: endorsements[toTokenId].length - 1
-            })
+            DataTypes.GivenEndorsement({ toTokenId: toTokenId, endorsementIndex: endorsements[toTokenId].length - 1 })
         );
 
         emit Events.EndorsementGiven(fromTokenId, toTokenId, connectionType, validUntil);
