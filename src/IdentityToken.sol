@@ -11,16 +11,9 @@ contract IdentityToken is ERC721 {
 
     uint256 private _nextTokenId = 1;
 
-    // wallet => tokenId (enforce one identity per wallet)
     mapping(address => uint256) public ownerToTokenId;
-
-    // tokenId => IdentityState
     mapping(uint256 => DataTypes.IdentityState) public identityStates;
-
-    // tokenId => attribute keyHash => attribute value
     mapping(uint256 => mapping(bytes32 => bytes)) public attributes;
-
-    // tokenId => array of Endorsements
     mapping(uint256 => DataTypes.Endorsement[]) public endorsements;
 
     modifier onlyTokenOwner(uint256 tokenId) {
@@ -37,21 +30,14 @@ contract IdentityToken is ERC721 {
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);
-
-        // prevent transfers (only mint or burn allowed)
         if (from != address(0) && to != address(0)) revert NonTransferable();
-
         address prevOwner = super._update(to, tokenId, auth);
-
-        // maintain ownerToTokenId mapping
         if (from != address(0)) {
             delete ownerToTokenId[from];
         }
-
         if (to != address(0)) {
             ownerToTokenId[to] = tokenId;
         }
-
         return prevOwner;
     }
 
@@ -60,18 +46,14 @@ contract IdentityToken is ERC721 {
      */
     function mint() external returns (uint256) {
         if (balanceOf(msg.sender) != 0) revert Errors.AlreadyHasIdentity();
-
         uint256 tokenId = _nextTokenId++;
-
         _mint(msg.sender, tokenId);
-
         ownerToTokenId[msg.sender] = tokenId;
-
         return tokenId;
     }
 
     /**
-     * @dev Sets a metadata attribute (e.g., name, social link) for an identity.
+     * @dev Sets a metadata attribute for an identity.
      */
     function setAttribute(
         uint256 tokenId,
@@ -79,10 +61,20 @@ contract IdentityToken is ERC721 {
         bytes calldata value
     ) external onlyTokenOwner(tokenId) notCompromised(tokenId) {
         bytes32 keyHash = keccak256(abi.encodePacked(key));
-
         attributes[tokenId][keyHash] = value;
-
         emit Events.AttributeSet(tokenId, keyHash, value);
+    }
+
+    /**
+     * @dev Deletes a metadata attribute entirely from an identity.
+     */
+    function deleteAttribute(
+        uint256 tokenId,
+        string calldata key
+    ) external onlyTokenOwner(tokenId) notCompromised(tokenId) {
+        bytes32 keyHash = keccak256(abi.encodePacked(key));
+        delete attributes[tokenId][keyHash];
+        emit Events.AttributeDeleted(tokenId, keyHash);
     }
 
     /**
@@ -99,12 +91,9 @@ contract IdentityToken is ERC721 {
 
         DataTypes.Endorsement[] storage list = endorsements[toTokenId];
 
-        // prevent duplicate active endorsements
         for (uint256 i = 0; i < list.length; i++) {
             DataTypes.Endorsement storage e = list[i];
-
             bool active = e.revokedAt == 0 && (e.validUntil == 0 || e.validUntil >= block.timestamp);
-
             if (active && e.endorserTokenId == fromTokenId && e.connectionType == connectionType) {
                 revert Errors.DuplicateEndorsement();
             }
@@ -119,7 +108,30 @@ contract IdentityToken is ERC721 {
         });
 
         endorsements[toTokenId].push(newEndorsement);
-
         emit Events.EndorsementGiven(fromTokenId, toTokenId, connectionType, validUntil);
+    }
+
+    /**
+     * @dev Allows an endorser to revoke an endorsement they created.
+     */
+    function revokeEndorsement(
+        uint256 fromTokenId,
+        uint256 toTokenId,
+        uint256 endorsementIndex
+    ) external onlyTokenOwner(fromTokenId) notCompromised(fromTokenId) {
+        DataTypes.Endorsement[] storage list = endorsements[toTokenId];
+
+        if (endorsementIndex >= list.length)
+            revert Errors.IndexOutOfBounds();
+
+        DataTypes.Endorsement storage e = list[endorsementIndex];
+
+        if (e.endorserTokenId != fromTokenId) revert Errors.NotEndorser();
+
+        if (e.revokedAt != 0) revert Errors.AlreadyRevoked();
+
+        e.revokedAt = block.timestamp;
+
+        emit Events.EndorsementRevoked(fromTokenId, toTokenId, endorsementIndex);
     }
 }
