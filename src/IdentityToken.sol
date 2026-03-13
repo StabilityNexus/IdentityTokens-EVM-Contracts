@@ -122,4 +122,27 @@ contract IdentityToken is ERC721 {
 
         emit Events.EndorsementGiven(fromTokenId, toTokenId, connectionType, validUntil);
     }
+
+    /**
+     * @dev Allows an endorser to revoke an endorsement they created.
+     * Only the original endorser can revoke their own endorsement.
+     */
+    function revokeEndorsement(
+        uint256 fromTokenId,
+        uint256 toTokenId,
+        uint256 endorsementIndex
+    ) external onlyTokenOwner(fromTokenId) notCompromised(fromTokenId) {
+        if (endorsementIndex >= endorsements[toTokenId].length)
+            revert Errors.IndexOutOfBounds();
+
+        DataTypes.Endorsement storage e = endorsements[toTokenId][endorsementIndex];
+
+        if (e.endorserTokenId != fromTokenId) revert Errors.NotEndorser();
+
+        if (e.revokedAt != 0) revert Errors.AlreadyRevoked();
+
+        e.revokedAt = block.timestamp;
+
+        emit Events.EndorsementRevoked(fromTokenId, toTokenId, endorsementIndex);
+    }
 }
