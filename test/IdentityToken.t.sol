@@ -11,7 +11,6 @@ contract IdentityTokenTest is Test {
 
     address public alice = address(0x1);
     address public bob = address(0x2);
-    address public charlie = address(0x3);
 
     function setUp() public {
         identityToken = new IdentityToken();
@@ -143,7 +142,8 @@ contract IdentityTokenTest is Test {
         vm.prank(alice);
         identityToken.endorse(aliceId, bobId, connectionType, 0);
 
-        vm.prank(charlie);
+        // address(0x3) inlined directly — no need for a named state variable
+        vm.prank(address(0x3));
         vm.expectRevert(Errors.NotTokenOwner.selector);
         identityToken.revokeEndorsement(aliceId, bobId, 0);
     }
