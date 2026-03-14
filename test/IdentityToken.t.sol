@@ -230,4 +230,11 @@ contract IdentityTokenTest is Test {
 
         assertEq(value.length, 0);
     }
+
+    // NOTE: test_RevertIf_CompromisedDeletesAttribute cannot be implemented
+    // at this time because the IdentityToken contract does not currently
+    // expose a public function to mark an identity as compromised.
+    // This test should be added once that functionality is available
+    // in the contract. The notCompromised(tokenId) modifier on
+    // deleteAttribute() is verified to exist in the contract code.
 }
