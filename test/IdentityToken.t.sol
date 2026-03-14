@@ -222,6 +222,15 @@ contract IdentityTokenTest is Test {
         vm.prank(alice);
         uint256 tokenId = identityToken.mint();
 
+        // AttributeDeleted is emitted even when the key does not exist.
+        // This is intentional — off-chain consumers must handle this case
+        // and not assume the key was previously set when they see this event.
+        vm.expectEmit(true, true, true, true);
+        emit Events.AttributeDeleted(
+            tokenId,
+            keccak256(abi.encodePacked("nonexistent"))
+        );
+
         vm.prank(alice);
         identityToken.deleteAttribute(tokenId, "nonexistent");
 
