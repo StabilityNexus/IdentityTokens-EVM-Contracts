@@ -529,4 +529,69 @@ contract IdentityTokenTest is Test {
 
         assertTrue(identityToken.isExpired(tokenId));
     }
+
+    // -------------------------------------------------------------------------
+    // MAX_ENDORSEMENTS (DoS prevention)
+    // -------------------------------------------------------------------------
+
+    /// @notice The 50th endorsement (at the limit) must succeed.
+    function test_Endorse_AtMaxLimit() public {
+        // Target identity that will receive all endorsements
+        vm.prank(alice);
+        uint256 targetId = identityToken.mint();
+
+        bytes32 connectionType = keccak256(abi.encodePacked("Colleague"));
+        uint256 maxEndorsements = identityToken.MAX_ENDORSEMENTS(); // 50
+
+        // Mint 50 unique endorsers and have each endorse the target
+        for (uint256 i = 0; i < maxEndorsements; i++) {
+            address endorser = address(uint160(1000 + i));
+            vm.prank(endorser);
+            uint256 endorserId = identityToken.mint();
+
+            vm.prank(endorser);
+            identityToken.endorse(endorserId, targetId, connectionType, 0);
+        }
+
+        // Verify the target has exactly MAX_ENDORSEMENTS endorsements
+        DataTypes.Identity memory identity = identityToken.getIdentity(targetId);
+        assertEq(identity.endorsementCount, maxEndorsements);
+
+        // Verify the target is considered verified
+        assertTrue(identityToken.isVerified(targetId));
+    }
+
+    /// @notice The 51st endorsement must revert with MaxEndorsementsReached.
+    function test_RevertIf_MaxEndorsementsReached() public {
+        // Target identity that will receive all endorsements
+        vm.prank(alice);
+        uint256 targetId = identityToken.mint();
+
+        bytes32 connectionType = keccak256(abi.encodePacked("Colleague"));
+        uint256 maxEndorsements = identityToken.MAX_ENDORSEMENTS(); // 50
+
+        // Fill up to the maximum
+        for (uint256 i = 0; i < maxEndorsements; i++) {
+            address endorser = address(uint160(2000 + i));
+            vm.prank(endorser);
+            uint256 endorserId = identityToken.mint();
+
+            vm.prank(endorser);
+            identityToken.endorse(endorserId, targetId, connectionType, 0);
+        }
+
+        // The 51st endorsement must revert
+        address extraEndorser = address(uint160(9999));
+        vm.prank(extraEndorser);
+        uint256 extraId = identityToken.mint();
+
+        vm.prank(extraEndorser);
+        vm.expectRevert(Errors.MaxEndorsementsReached.selector);
+        identityToken.endorse(extraId, targetId, connectionType, 0);
+    }
+
+    /// @notice MAX_ENDORSEMENTS constant is exposed and equals 50.
+    function test_MAX_ENDORSEMENTS_Constant() public view {
+        assertEq(identityToken.MAX_ENDORSEMENTS(), 50);
+    }
 }

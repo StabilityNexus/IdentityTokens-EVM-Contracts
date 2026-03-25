@@ -16,4 +16,5 @@ library Errors {
     error AlreadyHasIdentity();
     error DuplicateEndorsement();
     error ArrayLengthMismatch();
+    error MaxEndorsementsReached();
 }

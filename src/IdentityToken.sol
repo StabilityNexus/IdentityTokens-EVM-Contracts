@@ -11,6 +11,8 @@ import { IIdentityToken } from "./interfaces/IIdentityToken.sol";
 contract IdentityToken is ERC721, IIdentityToken {
     error NonTransferable();
 
+    uint256 public constant MAX_ENDORSEMENTS = 50;
+
     uint256 private _nextTokenId = 1;
 
     // wallet => tokenId (enforce one identity per wallet)
@@ -160,6 +162,8 @@ contract IdentityToken is ERC721, IIdentityToken {
         if (_ownerOf(toTokenId) == address(0)) revert Errors.TargetInvalid();
 
         DataTypes.Endorsement[] storage list = endorsements[toTokenId];
+
+        if (list.length >= MAX_ENDORSEMENTS) revert Errors.MaxEndorsementsReached();
 
         // prevent duplicate active endorsements
         for (uint256 i = 0; i < list.length; i++) {
