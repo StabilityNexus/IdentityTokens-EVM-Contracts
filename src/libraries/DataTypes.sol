@@ -1,31 +1,51 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 library DataTypes {
-    struct Endorsement {
-        uint256 endorserTokenId;
-        bytes32 connectionType;
-        uint256 timestamp;
-        uint256 validUntil;
-        uint256 revokedAt;
+    enum TokenType {
+        ROOT,
+        SUB
     }
 
-    struct IdentityState {
-        bool isCompromised;
-        address backupWallet;
-        address pendingBackupWallet;
-        uint256 backupUnlockTime;
-        uint256 validUntil;
-    }
-
-    struct Identity {
+    struct RootIdentity {
+        string username;
         uint256 tokenId;
         address owner;
-        bool isCompromised;
-        address backupWallet;
-        address pendingBackupWallet;
-        uint256 backupUnlockTime;
+        uint256 createdAt;
+        bool isActive;
+        bytes32 metadataHash;
+    }
+
+    struct SubToken {
+        uint256 subTokenId;
+        uint256 parentRootId;
+        string tokenName;
+        string tokenType;
+        bytes tokenValue;
+        string about;
         uint256 validUntil;
-        uint256 endorsementCount;
+        uint256 createdAt;
+        uint256 totalEndorsementCount;
+        uint256 revokedCount;
+        bool isFlagged;
+        uint256 flagCount;
+        uint256 transferCount;
+    }
+
+    struct RootIdentityView {
+        uint256 tokenId;
+        string username;
+        address owner;
+        uint256 createdAt;
+        bool isActive;
+        uint256 subTokenCount;
+    }
+
+    struct Endorsement {
+        uint256 endorserTokenId;
+        address endorserAddress;
+        uint256 timestamp;
+        uint256 revokedAt;
+        uint256 expiresAt;
     }
 }
