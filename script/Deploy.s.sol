@@ -1,24 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Script, console } from "forge-std/Script.sol";
-import { IdentityToken } from "../src/IdentityToken.sol";
+import { Script } from "forge-std/Script.sol";
+import { IdentitySystem } from "../src/IdentitySystem.sol";
 import { HelperConfig } from "./HelperConfig.s.sol";
 
 contract Deploy is Script {
-    function run() external returns (IdentityToken, HelperConfig) {
+    function run() external returns (IdentitySystem) {
         HelperConfig helperConfig = new HelperConfig();
-        uint256 deployerKey = helperConfig.activeNetworkConfig();
+        HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
 
-        vm.startBroadcast(deployerKey);
-
-        // Deploy the MVP contract
-        IdentityToken identityToken = new IdentityToken();
-
+        vm.startBroadcast(config.deployerKey);
+        IdentitySystem identitySystem = new IdentitySystem();
         vm.stopBroadcast();
 
-        console.log("IdentityToken deployed at:", address(identityToken));
-
-        return (identityToken, helperConfig);
+        return identitySystem;
     }
 }

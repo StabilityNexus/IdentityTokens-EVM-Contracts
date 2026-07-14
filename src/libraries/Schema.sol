@@ -1,23 +1,45 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
+
+import { Events } from "./Events.sol";
 
 /**
  * @title Schema
- * @notice Pre-computed keccak256 key hashes for standard identity attributes.
- *         These match the hashing logic in IdentityToken.setAttribute:
- *         keccak256(abi.encodePacked(key))
- *
- *         Usage:
- *           bytes memory name = identityToken.attributes(tokenId, Schema.NAME);
+ * @notice Abstract attribute store for root identities.
+ *         Stores arbitrary key → value pairs per root token,
+ *         enabling extensible metadata without struct changes.
  */
-library Schema {
-    bytes32 internal constant NAME = keccak256(abi.encodePacked("name"));
-    bytes32 internal constant AGE = keccak256(abi.encodePacked("age"));
-    bytes32 internal constant NATIONALITY = keccak256(abi.encodePacked("nationality"));
-    bytes32 internal constant RESIDENCE = keccak256(abi.encodePacked("residence"));
-    bytes32 internal constant GITHUB = keccak256(abi.encodePacked("github"));
-    bytes32 internal constant LINKEDIN = keccak256(abi.encodePacked("linkedin"));
-    bytes32 internal constant TWITTER = keccak256(abi.encodePacked("twitter"));
-    bytes32 internal constant PHONE = keccak256(abi.encodePacked("phone"));
-    bytes32 internal constant EMAIL = keccak256(abi.encodePacked("email"));
+abstract contract Schema {
+    // rootId → keyHash → value
+    mapping(uint256 => mapping(bytes32 => bytes)) internal _rootAttributes;
+
+    // ── Internal Mutations ───────────────────────────────────
+
+    function _setRootAttribute(uint256 rootId, string memory key, bytes memory value) internal {
+        bytes32 keyHash = keccak256(bytes(key));
+        _rootAttributes[rootId][keyHash] = value;
+        emit Events.RootAttributeSet(rootId, key, value);
+    }
+
+    function _deleteRootAttribute(uint256 rootId, string memory key) internal {
+        bytes32 keyHash = keccak256(bytes(key));
+        delete _rootAttributes[rootId][keyHash];
+        emit Events.RootAttributeSet(rootId, key, "");
+    }
+
+    // ── Internal Views ───────────────────────────────────────
+
+    function _getRootAttribute(uint256 rootId, string memory key) internal view returns (bytes memory) {
+        return _rootAttributes[rootId][keccak256(bytes(key))];
+    }
+
+    function _hasRootAttribute(uint256 rootId, string memory key) internal view returns (bool) {
+        return _rootAttributes[rootId][keccak256(bytes(key))].length > 0;
+    }
+
+    // ── Public Views ─────────────────────────────────────────
+
+    function getRootAttribute(uint256 rootId, string calldata key) external view returns (bytes memory) {
+        return _rootAttributes[rootId][keccak256(bytes(key))];
+    }
 }

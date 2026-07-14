@@ -8,6 +8,7 @@ solc_version = "0.8.24"
 # Standard Optimizer Settings
 optimizer = true
 optimizer_runs = 200
+via_ir = true
 
 # Permissions
 fs_permissions = [{ access = "read", path = "./" }]
@@ -32,6 +33,6 @@ multiline_func_header = "attributes_first"
 quote_style = "double"
 number_underscore = "preserve"
 
-# FIXED: Changed [ci] to [profile.ci] to fix the warning
-[profile.ci]
+# changed [ci] to [profile.ci.fuzz] to fix the warning
+[profile.ci.fuzz]
 runs = 1000
