@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { EndorsementModule } from "./modules/EndorsementModule.sol";
 import { FlagModule } from "./modules/FlagModule.sol";
-import { Schema } from "./libraries/Schema.sol";
 import { DataTypes } from "./libraries/DataTypes.sol";
 import { Errors } from "./libraries/Errors.sol";
 import { Events } from "./libraries/Events.sol";
@@ -12,85 +11,123 @@ import { Events } from "./libraries/Events.sol";
 /**
  * @title IdentitySystem
  * @notice Decentralised identity with soulbound roots, transferable
- *         sub-tokens, time-based endorsements, revocation and flagging.
+ *         tokens, time-based endorsements, revocation and flagging.
  *         Inheritance chain:
- *           ERC721 → Schema → EndorsementModule → FlagModule
+ *           ERC721 → EndorsementModule → FlagModule
  *         All abstract hooks from every module are resolved here.
  */
-contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
+contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
     uint256 private _nextTokenId = 1;
 
-    // Username registry is immutable once claimed
-    mapping(string => bool) public usernameTaken;
-    mapping(string => uint256) public usernameToRootId;
+    // Admin & linked contracts
+    address public admin;
+    address public profileSystem;
+
+    // Profile ownership tracking (one profile per wallet, persistent mint guard lives in ProfileSystem)
+    mapping(address => bool) public hasProfile;
 
     // Root identity storage
     mapping(uint256 => DataTypes.RootIdentity) public rootIdentities;
     mapping(address => uint256) public ownerToRootId;
 
-    // Sub-token storage
-    mapping(uint256 => DataTypes.SubToken) public subTokens;
-    mapping(uint256 => uint256[]) public rootToSubTokenIds;
+    // Token storage
+    mapping(uint256 => DataTypes.Token) public tokens;
+    mapping(uint256 => uint256[]) public rootToTokenIds;
 
-    // Token type tracking  (TokenType.ROOT | TokenType.SUB)
+    // Token type tracking  (TokenType.ROOT | TokenType.SUB | TokenType.PROFILE)
     mapping(uint256 => DataTypes.TokenType) public tokenTypes;
 
     // Transfer history per token
     mapping(uint256 => address[]) public transferHistory;
 
-    // Wallet-level sub-token index
-    mapping(address => uint256[]) public walletSubTokens;
+    // Wallet-level token index
+    mapping(address => uint256[]) public walletTokens;
 
     // Transfer control flags — prevent raw ERC721 transfers
     bool private _internalTransferActive;
 
-    constructor() ERC721("Decentralized-Identity-Tokens", "DIT") {}
+    constructor() ERC721("Decentralized-Identity-Tokens", "DIT") {
+        admin = msg.sender;
+    }
+
+    // Admin
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Not authorized");
+        _;
+    }
+
+    function setProfileSystem(address _profileSystem) external onlyAdmin {
+        profileSystem = _profileSystem;
+    }
 
     // Root Identity
 
-    function createRootIdentity(
-        string calldata username,
-        string calldata displayName,
-        bytes calldata optionalMetadata
-    ) external returns (uint256) {
-        if (bytes(username).length < 3) revert Errors.UsernameTooShort();
-        if (bytes(username).length > 32) revert Errors.UsernameTooLong();
-        if (usernameTaken[username]) revert Errors.UsernameTaken();
+    function createRootIdentity(string calldata displayName) external returns (uint256) {
         if (ownerToRootId[msg.sender] != 0) revert Errors.AlreadyHasRoot();
-
-        _validateUsername(username);
 
         uint256 rootId = _nextTokenId++;
         _mint(msg.sender, rootId);
 
-        usernameTaken[username] = true;
-        usernameToRootId[username] = rootId;
         ownerToRootId[msg.sender] = rootId;
         tokenTypes[rootId] = DataTypes.TokenType.ROOT;
 
         rootIdentities[rootId] = DataTypes.RootIdentity({
-            username: username,
+            walletAddress: msg.sender,
+            displayName: displayName,
             tokenId: rootId,
-            owner: msg.sender,
             createdAt: block.timestamp,
-            isActive: true,
-            metadataHash: keccak256(optionalMetadata)
+            isActive: true
         });
 
-        if (bytes(displayName).length > 0) {
-            _setRootAttribute(rootId, "name", bytes(displayName));
-        }
-        if (optionalMetadata.length > 0) {
-            _setRootAttribute(rootId, "metadata", optionalMetadata);
-        }
-
-        emit Events.RootIdentityCreated(rootId, msg.sender, username);
+        emit Events.RootIdentityCreated(rootId, msg.sender, displayName);
         return rootId;
     }
 
-    // Sub-token
+    // Profile Token Minting (called by ProfileSystem)
 
-    function createSubToken(
+    function mintProfileToken(address to) external returns (uint256) {
+        require(msg.sender == profileSystem, "Only profile system");
+
+        uint256 rootId = ownerToRootId[to];
+        if (rootId == 0) revert Errors.NoRootIdentity();
+        if (!rootIdentities[rootId].isActive) revert Errors.RootDeactivated();
+
+        uint256 tokenId = _nextTokenId++;
+        _mint(to, tokenId);
+
+        tokenTypes[tokenId] = DataTypes.TokenType.PROFILE;
+
+        // Initialize a Token struct so endorsement/flagging hooks work seamlessly
+        tokens[tokenId] = DataTypes.Token({
+            tokenId: tokenId,
+            parentRootId: rootId,
+            tokenName: "Profile",
+            tokenType: "PROFILE",
+            tokenValue: "",
+            about: "",
+            validUntil: 0,
+            createdAt: block.timestamp,
+            totalEndorsementCount: 0,
+            revokedCount: 0,
+            isFlagged: false,
+            flagCount: 0,
+            transferCount: 0
+        });
+
+        rootToTokenIds[rootId].push(tokenId);
+        walletTokens[to].push(tokenId);
+        transferHistory[tokenId].push(to);
+
+        hasProfile[to] = true;
+
+        emit Events.TokenCreated(tokenId, rootId, "Profile", "PROFILE");
+        return tokenId;
+    }
+
+    // Token
+
+    function createToken(
         string calldata tokenName,
         string calldata tokenType,
         bytes calldata tokenValue,
@@ -102,13 +139,13 @@ contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
         if (!rootIdentities[rootId].isActive) revert Errors.RootDeactivated();
         if (validUntil != 0 && validUntil <= block.timestamp) revert Errors.InvalidExpiry();
 
-        uint256 subTokenId = _nextTokenId++;
-        _mint(msg.sender, subTokenId);
+        uint256 tokenId = _nextTokenId++;
+        _mint(msg.sender, tokenId);
 
-        tokenTypes[subTokenId] = DataTypes.TokenType.SUB;
+        tokenTypes[tokenId] = DataTypes.TokenType.SUB;
 
-        subTokens[subTokenId] = DataTypes.SubToken({
-            subTokenId: subTokenId,
+        tokens[tokenId] = DataTypes.Token({
+            tokenId: tokenId,
             parentRootId: rootId,
             tokenName: tokenName,
             tokenType: tokenType,
@@ -123,59 +160,73 @@ contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
             transferCount: 0
         });
 
-        rootToSubTokenIds[rootId].push(subTokenId);
-        walletSubTokens[msg.sender].push(subTokenId);
-        transferHistory[subTokenId].push(msg.sender);
+        rootToTokenIds[rootId].push(tokenId);
+        walletTokens[msg.sender].push(tokenId);
+        transferHistory[tokenId].push(msg.sender);
 
-        emit Events.SubTokenCreated(subTokenId, rootId, tokenName, tokenType);
-        return subTokenId;
+        emit Events.TokenCreated(tokenId, rootId, tokenName, tokenType);
+        return tokenId;
     }
 
-    function transferSubToken(uint256 subTokenId, address sendingTo) external {
-        if (ownerOf(subTokenId) != msg.sender) revert Errors.NotHolder();
-        if (tokenTypes[subTokenId] != DataTypes.TokenType.SUB) revert Errors.CannotTransferRoot();
+    function transferToken(uint256 tokenId, address sendingTo) external {
+        if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
+        if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) revert Errors.CannotTransferRoot();
         if (sendingTo == msg.sender) revert Errors.SelfTransfer();
         if (sendingTo == address(0)) revert Errors.ZeroAddress();
-        if (subTokens[subTokenId].validUntil != 0 && subTokens[subTokenId].validUntil < block.timestamp) {
-            revert Errors.TokenExpired();
+
+        // enforce one-profile-per-wallet on the receiving end
+        if (tokenTypes[tokenId] == DataTypes.TokenType.PROFILE) {
+            if (hasProfile[sendingTo]) revert Errors.RecipientAlreadyHasProfile();
+            hasProfile[sendingTo] = true;
+            hasProfile[msg.sender] = false;
+        } else {
+            // SUB tokens: check expiry
+            if (tokens[tokenId].validUntil != 0 && tokens[tokenId].validUntil < block.timestamp) {
+                revert Errors.TokenExpired();
+            }
         }
 
         // Record transfer
-        transferHistory[subTokenId].push(sendingTo);
-        subTokens[subTokenId].transferCount++;
+        transferHistory[tokenId].push(sendingTo);
+        tokens[tokenId].transferCount++;
 
         // Update wallet indices
-        _removeFromWalletList(msg.sender, subTokenId);
-        walletSubTokens[sendingTo].push(subTokenId);
+        _removeFromWalletList(msg.sender, tokenId);
+        walletTokens[sendingTo].push(tokenId);
 
         // Execute controlled transfer
         _internalTransferActive = true;
-        _transfer(msg.sender, sendingTo, subTokenId);
+        _transfer(msg.sender, sendingTo, tokenId);
         _internalTransferActive = false;
 
-        emit Events.SubTokenTransferred(subTokenId, msg.sender, sendingTo);
+        emit Events.TokenTransferred(tokenId, msg.sender, sendingTo);
     }
 
-    function burnSubToken(uint256 subTokenId) external {
-        if (ownerOf(subTokenId) != msg.sender) revert Errors.NotHolder();
-        if (tokenTypes[subTokenId] != DataTypes.TokenType.SUB) revert Errors.NotSubToken();
+    function burnToken(uint256 tokenId) external {
+        if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
+        if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) revert Errors.NotToken();
 
-        uint256 rootId = subTokens[subTokenId].parentRootId;
+        // If burning a profile token, clear the wallet's profile flag
+        if (tokenTypes[tokenId] == DataTypes.TokenType.PROFILE) {
+            hasProfile[msg.sender] = false;
+        }
+
+        uint256 rootId = tokens[tokenId].parentRootId;
 
         // Remove from wallet tracking
-        _removeFromWalletList(msg.sender, subTokenId);
+        _removeFromWalletList(msg.sender, tokenId);
 
-        // Remove from root's sub-token list
-        _removeFromRootSubTokenList(rootId, subTokenId);
+        // Remove from root's token list
+        _removeFromRootTokenList(rootId, tokenId);
 
-        // Clear sub-token data so burned tokens cannot be endorsed/flagged
-        delete subTokens[subTokenId];
-        delete tokenTypes[subTokenId];
+        // Clear token data so burned tokens cannot be endorsed/flagged
+        delete tokens[tokenId];
+        delete tokenTypes[tokenId];
 
         // Burn the ERC721 token (permanent destruction)
-        _burn(subTokenId);
+        _burn(tokenId);
 
-        emit Events.SubTokenBurned(subTokenId, rootId);
+        emit Events.TokenBurned(tokenId, rootId);
     }
 
     // Transfer Control
@@ -189,9 +240,9 @@ contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
             if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) {
                 revert Errors.RootNonTransferable();
             }
-            // Sub tokens: only via transferSubToken()
+            // Sub & Profile tokens: only via transferToken()
             if (!_internalTransferActive) {
-                revert Errors.UseTransferSubToken();
+                revert Errors.UseTransferToken();
             }
         }
 
@@ -206,69 +257,68 @@ contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
     }
 
     // EndorsementModule hooks
-
-    function _requireSubTokenActive(uint256 id) internal view override(EndorsementModule, FlagModule) {
-        if (tokenTypes[id] != DataTypes.TokenType.SUB) revert Errors.NotSubToken();
-        if (subTokens[id].validUntil != 0 && subTokens[id].validUntil < block.timestamp) {
+    function _requireTokenActive(uint256 id) internal view override(EndorsementModule, FlagModule) {
+        if (tokenTypes[id] == DataTypes.TokenType.ROOT) revert Errors.NotToken();
+        if (tokens[id].validUntil != 0 && tokens[id].validUntil < block.timestamp) {
             revert Errors.TokenExpired();
         }
     }
 
-    function _requireNotSelfEndorsement(uint256 endorserRootId, uint256 subTokenId) internal view override {
-        if (endorserRootId == subTokens[subTokenId].parentRootId) revert Errors.CannotEndorseOwnToken();
+    function _requireNotSelfEndorsement(uint256 endorserRootId, uint256 tokenId) internal view override {
+        if (endorserRootId == tokens[tokenId].parentRootId) revert Errors.CannotEndorseOwnToken();
     }
 
-    function _incrementTotalEndorsementCount(uint256 subTokenId) internal override {
-        subTokens[subTokenId].totalEndorsementCount++;
+    function _incrementTotalEndorsementCount(uint256 tokenId) internal override {
+        tokens[tokenId].totalEndorsementCount++;
     }
 
-    function _incrementRevokedCount(uint256 subTokenId) internal override {
-        subTokens[subTokenId].revokedCount++;
+    function _incrementRevokedCount(uint256 tokenId) internal override {
+        tokens[tokenId].revokedCount++;
     }
 
-    function _getSubTokenValidUntil(uint256 id) internal view override returns (uint256) {
-        return subTokens[id].validUntil;
+    function _getTokenValidUntil(uint256 id) internal view override returns (uint256) {
+        return tokens[id].validUntil;
     }
 
     // bridges EndorsementModule and FlagModule
-    function _checkFlaggingThreshold(uint256 subTokenId) internal override(EndorsementModule) {
-        _checkFlaggingThresholdInternal(subTokenId);
+    function _checkFlaggingThreshold(uint256 tokenId) internal override(EndorsementModule) {
+        _checkFlaggingThresholdInternal(tokenId);
     }
 
     // FlagModule shared hook
-    function _countRevokedEndorsements(uint256 subTokenId) internal view override(FlagModule) returns (uint256) {
-        return subTokens[subTokenId].revokedCount;
+    function _countRevokedEndorsements(uint256 tokenId) internal view override(FlagModule) returns (uint256) {
+        return tokens[tokenId].revokedCount;
     }
 
     // FlagModule hooks
 
     function _incrementFlagCount(uint256 id) internal override {
-        subTokens[id].flagCount++;
+        tokens[id].flagCount++;
     }
 
     function _getFlagCount(uint256 id) internal view override returns (uint256) {
-        return subTokens[id].flagCount;
+        return tokens[id].flagCount;
     }
 
     function _setFlagged(uint256 id, bool flagged) internal override {
-        subTokens[id].isFlagged = flagged;
+        tokens[id].isFlagged = flagged;
     }
 
     function _getTotalEndorsementCount(uint256 id) internal view override returns (uint256) {
-        return subTokens[id].totalEndorsementCount;
+        return tokens[id].totalEndorsementCount;
     }
 
-    function _requireNotSelfFlag(uint256 callerRootId, uint256 subTokenId) internal view override {
-        if (callerRootId == subTokens[subTokenId].parentRootId) revert Errors.CannotFlagOwnToken();
+    function _requireNotSelfFlag(uint256 callerRootId, uint256 tokenId) internal view override {
+        if (callerRootId == tokens[tokenId].parentRootId) revert Errors.CannotFlagOwnToken();
     }
 
     // Internal Helpers
 
-    function _removeFromWalletList(address wallet, uint256 subTokenId) internal {
-        uint256[] storage list = walletSubTokens[wallet];
+    function _removeFromWalletList(address wallet, uint256 tokenId) internal {
+        uint256[] storage list = walletTokens[wallet];
         uint256 len = list.length;
         for (uint256 i = 0; i < len; i++) {
-            if (list[i] == subTokenId) {
+            if (list[i] == tokenId) {
                 list[i] = list[len - 1];
                 list.pop();
                 return;
@@ -276,38 +326,26 @@ contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
         }
     }
 
-    function _removeFromRootSubTokenList(uint256 rootId, uint256 subTokenId) internal {
-        uint256[] storage list = rootToSubTokenIds[rootId];
+    function _removeFromRootTokenList(uint256 rootId, uint256 tokenId) internal {
+        uint256[] storage list = rootToTokenIds[rootId];
         uint256 len = list.length;
         for (uint256 i = 0; i < len; i++) {
-            if (list[i] == subTokenId) {
+            if (list[i] == tokenId) {
                 list[i] = list[len - 1];
                 list.pop();
                 return;
             }
-        }
-    }
-
-    function _validateUsername(string calldata username) internal pure {
-        bytes memory b = bytes(username);
-        for (uint256 i = 0; i < b.length; i++) {
-            bytes1 char = b[i];
-            bool valid = (char >= 0x61 && char <= 0x7A) || // a-z
-                (char >= 0x30 && char <= 0x39) || // 0-9
-                char == 0x2E || // .
-                char == 0x5F; // _
-            if (!valid) revert Errors.InvalidUsernameChar();
         }
     }
 
     // View Functions
 
-    function getSubTokensForRoot(uint256 rootId) external view returns (uint256[] memory) {
-        return rootToSubTokenIds[rootId];
+    function getTokensForRoot(uint256 rootId) external view returns (uint256[] memory) {
+        return rootToTokenIds[rootId];
     }
 
-    function getWalletSubTokens(address wallet) external view returns (uint256[] memory) {
-        return walletSubTokens[wallet];
+    function getWalletTokens(address wallet) external view returns (uint256[] memory) {
+        return walletTokens[wallet];
     }
 
     function getTransferHistory(uint256 tokenId) external view returns (address[] memory) {
@@ -319,15 +357,11 @@ contract IdentitySystem is ERC721, Schema, EndorsementModule, FlagModule {
         return
             DataTypes.RootIdentityView({
                 tokenId: r.tokenId,
-                username: r.username,
-                owner: r.owner,
+                walletAddress: r.walletAddress,
+                displayName: r.displayName,
                 createdAt: r.createdAt,
                 isActive: r.isActive,
-                subTokenCount: rootToSubTokenIds[rootId].length
+                tokenCount: rootToTokenIds[rootId].length
             });
-    }
-
-    function resolveUsername(string calldata username) external view returns (uint256) {
-        return usernameToRootId[username];
     }
 }
