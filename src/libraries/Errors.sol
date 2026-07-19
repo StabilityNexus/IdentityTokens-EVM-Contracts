@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 library Errors {
     // Transfer
     error RootNonTransferable();
-    error UseTransferSubToken();
+    error UseTransferToken();
     error CannotTransferRoot();
     error SelfTransfer();
     error ZeroAddress();
@@ -13,15 +13,21 @@ library Errors {
     // Identity
     error NoRootIdentity();
     error AlreadyHasRoot();
-    error UsernameTaken();
-    error UsernameTooShort();
-    error UsernameTooLong();
-    error InvalidUsernameChar();
     error RootDeactivated();
     error InvalidExpiry();
 
-    // Sub-token
-    error NotSubToken();
+    // Profile
+    error AlreadyMintedProfile();
+    error RecipientAlreadyHasProfile();
+    error ProfileNameRequired();
+    error ProfileUsernameRequired();
+    error ProfileUsernameTaken();
+    error ProfileUsernameTooShort();
+    error ProfileUsernameTooLong();
+    error InvalidProfileUsernameChar();
+
+    // Token
+    error NotToken();
     error TokenExpired();
 
     // Endorsement
@@ -30,7 +36,7 @@ library Errors {
     error NotYourEndorsement();
     error AlreadyRevoked();
     error EndorsementExpired();
-    error SubTokenExpiresTooSoon();
+    error TokenExpiresTooSoon();
     error NoActiveEndorsement();
 
     // Flag

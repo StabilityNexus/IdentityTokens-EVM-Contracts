@@ -4,20 +4,20 @@ pragma solidity ^0.8.24;
 library DataTypes {
     enum TokenType {
         ROOT,
-        SUB
+        SUB,
+        PROFILE
     }
 
     struct RootIdentity {
-        string username;
+        address walletAddress;
+        string displayName;
         uint256 tokenId;
-        address owner;
         uint256 createdAt;
         bool isActive;
-        bytes32 metadataHash;
     }
 
-    struct SubToken {
-        uint256 subTokenId;
+    struct Token {
+        uint256 tokenId;
         uint256 parentRootId;
         string tokenName;
         string tokenType;
@@ -34,11 +34,11 @@ library DataTypes {
 
     struct RootIdentityView {
         uint256 tokenId;
-        string username;
-        address owner;
+        address walletAddress;
+        string displayName;
         uint256 createdAt;
         bool isActive;
-        uint256 subTokenCount;
+        uint256 tokenCount;
     }
 
     struct Endorsement {
@@ -47,5 +47,18 @@ library DataTypes {
         uint256 timestamp;
         uint256 revokedAt;
         uint256 expiresAt;
+    }
+
+    struct ProfileMetadata {
+        string name;
+        string username;
+        uint256 age;
+        string nationality;
+        string github;
+        string email;
+        string discord;
+        string xDotCom;
+        string websitePortfolioLink;
+        string ens;
     }
 }
