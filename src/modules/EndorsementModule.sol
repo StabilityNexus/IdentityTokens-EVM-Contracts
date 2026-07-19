@@ -169,9 +169,7 @@ abstract contract EndorsementModule {
 
     function hasEndorsed(uint256 endorserRootId, uint256 tokenId) external view returns (bool) {
         if (!_hasActiveEndorsement[endorserRootId][tokenId]) return false;
-        DataTypes.Endorsement storage e = _endorsements[tokenId][
-            _activeEndorsementIndex[endorserRootId][tokenId]
-        ];
+        DataTypes.Endorsement storage e = _endorsements[tokenId][_activeEndorsementIndex[endorserRootId][tokenId]];
         return e.revokedAt == 0 && e.expiresAt > block.timestamp;
     }
 
