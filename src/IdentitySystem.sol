@@ -53,12 +53,15 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
     // Admin
 
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Not authorized");
+        if (msg.sender != admin) revert Errors.NotAdmin();
         _;
     }
 
     function setProfileSystem(address _profileSystem) external onlyAdmin {
+        if (_profileSystem == address(0)) revert Errors.ZeroAddress();
+        if (profileSystem != address(0)) revert Errors.ProfileSystemAlreadySet();
         profileSystem = _profileSystem;
+        emit Events.ProfileSystemSet(_profileSystem);
     }
 
     // Root Identity
@@ -87,7 +90,8 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
     // Profile Token Minting (called by ProfileSystem)
 
     function mintProfileToken(address to) external returns (uint256) {
-        require(msg.sender == profileSystem, "Only profile system");
+        if (msg.sender != profileSystem) revert Errors.OnlyProfileSystem();
+        if (hasProfile[to]) revert Errors.RecipientAlreadyHasProfile();
 
         uint256 rootId = ownerToRootId[to];
         if (rootId == 0) revert Errors.NoRootIdentity();
