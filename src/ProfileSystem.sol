@@ -7,6 +7,7 @@ import { Events } from "./libraries/Events.sol";
 
 interface IIdentitySystem {
     function mintProfileToken(address to) external returns (uint256);
+    function hasProfile(address user) external view returns (bool);
 }
 
 contract ProfileSystem {
@@ -34,7 +35,9 @@ contract ProfileSystem {
 
         // Uniqueness check
         if (usernameTaken[data.username]) revert Errors.ProfileUsernameTaken();
-        if (hasMintedProfile[msg.sender]) revert Errors.AlreadyMintedProfile();
+        if (hasMintedProfile[msg.sender] || identitySystem.hasProfile(msg.sender)) {
+            revert Errors.AlreadyMintedProfile();
+        }
 
         // State update
         usernameTaken[data.username] = true;
