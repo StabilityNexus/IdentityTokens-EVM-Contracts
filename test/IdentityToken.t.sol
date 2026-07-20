@@ -1478,6 +1478,12 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
         profileSystem.createProfile(meta);
+
+        // Bob tries to mint a profile — should be blocked because he already holds one
+        meta.username = "bob";
+        vm.prank(bob);
+        vm.expectRevert(Errors.AlreadyMintedProfile.selector);
+        profileSystem.createProfile(meta);
     }
 
     function test_ProfileEndorsement() public {
