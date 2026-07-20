@@ -42,4 +42,9 @@ library Errors {
     // Flag
     error AlreadyFlaggedByRoot();
     error CannotFlagOwnToken();
+
+    // Admin
+    error NotAdmin();
+    error OnlyProfileSystem();
+    error ProfileSystemAlreadySet();
 }

@@ -24,4 +24,7 @@ library Events {
     event TokenFlagged(uint256 indexed tokenId, address indexed flagger, uint256 flagCount);
 
     event TokenAutoFlagged(uint256 indexed tokenId, string reason);
+
+    // Admin
+    event ProfileSystemSet(address indexed profileSystem);
 }
