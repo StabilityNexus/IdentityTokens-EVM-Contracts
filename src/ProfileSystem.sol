@@ -17,6 +17,7 @@ contract ProfileSystem {
     mapping(string => bool) public usernameTaken;
     mapping(address => bool) public hasMintedProfile;
     mapping(uint256 => DataTypes.ProfileMetadata) public profiles;
+    mapping(string => uint256) public usernameToProfileTokenId;
 
     // Constructor
 
@@ -48,6 +49,9 @@ contract ProfileSystem {
 
         // Store metadata
         profiles[tokenId] = data;
+
+        // Store username → tokenId reverse lookup
+        usernameToProfileTokenId[data.username] = tokenId;
 
         emit Events.ProfileCreated(tokenId, msg.sender, data.username);
         return tokenId;
