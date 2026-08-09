@@ -4,7 +4,7 @@
 <!-- Organization Logo -->
 <div align="center" style="display: flex; align-items: center; justify-content: center; gap: 16px;">
   <img alt="Stability Nexus" src="public/stability.svg" width="175">
-  <img src="public/todo-project-logo.svg" width="175" />
+  <img src="public/logo.svg" width="175" />
 </div>
 
 &nbsp;
@@ -83,6 +83,17 @@
 - **GitHub Actions:** Automated lint, build (Forge), and test workflows
 - **Pre-commit Hooks:** Code quality enforcement before commits
 - **Package Manager:** npm
+
+---
+
+## 📜 Deployed Smart Contracts (Sepolia Testnet)
+
+The smart contracts are currently deployed on the Ethereum **Sepolia Testnet**:
+
+| Smart Contract     | Contract Address                             | Sepolia Etherscan Link                                                                               |
+| ------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **IdentitySystem** | `0xe886929760A5B8E47Cb42679512C920Fd1b14431` | [View on Etherscan](https://sepolia.etherscan.io/address/0xe886929760A5B8E47Cb42679512C920Fd1b14431) |
+| **ProfileSystem**  | `0xDf36b4Cc1fB9d65CB371e0ee88EB9e4b4A30E423` | [View on Etherscan](https://sepolia.etherscan.io/address/0xDf36b4Cc1fB9d65CB371e0ee88EB9e4b4A30E423) |
 
 ---
 
@@ -178,8 +189,7 @@ forge build --sizes
 forge clean
 ```
 
-We appreciate your feedback and contributions!
----
+## We appreciate your feedback and contributions!
 
 <p align="center">
   © 2026 The Stable Order.
