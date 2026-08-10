@@ -46,5 +46,6 @@ library Errors {
     // Admin
     error NotAdmin();
     error OnlyProfileSystem();
+    error OnlyIdentitySystem();
     error ProfileSystemAlreadySet();
 }
