@@ -57,6 +57,26 @@ contract ProfileSystem {
         return tokenId;
     }
 
+    // Profile Burn Cleanup (called by IdentitySystem when a profile token is burned)
+
+    function cleanupBurnedProfile(uint256 tokenId) external {
+        if (msg.sender != address(identitySystem)) revert Errors.OnlyIdentitySystem();
+
+        DataTypes.ProfileMetadata storage profile = profiles[tokenId];
+        string memory username = profile.username;
+
+        // Release the username reservation so it can be claimed by someone else
+        if (bytes(username).length > 0) {
+            delete usernameTaken[username];
+            delete usernameToProfileTokenId[username];
+        }
+
+        // Clear metadata
+        delete profiles[tokenId];
+
+        // Note: hasMintedProfile stays true — permanent mint guard (user already used their one-time mint)
+    }
+
     // View Functions
 
     function getProfile(uint256 tokenId) external view returns (DataTypes.ProfileMetadata memory) {
