@@ -8,6 +8,10 @@ import { DataTypes } from "./libraries/DataTypes.sol";
 import { Errors } from "./libraries/Errors.sol";
 import { Events } from "./libraries/Events.sol";
 
+interface IProfileSystem {
+    function cleanupBurnedProfile(uint256 tokenId) external;
+}
+
 /**
  * @title IdentitySystem
  * @notice Decentralised identity with soulbound roots, transferable
@@ -20,7 +24,7 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
     uint256 private _nextTokenId = 1;
 
     // Admin & linked contracts
-    address public admin;
+    address public immutable admin;
     address public profileSystem;
 
     // Profile ownership tracking (one profile per wallet, persistent mint guard lives in ProfileSystem)
@@ -42,6 +46,10 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
 
     // Wallet-level token index
     mapping(address => uint256[]) public walletTokens;
+
+    // O(1) index tracking for swap-and-pop removal
+    mapping(address => mapping(uint256 => uint256)) private _walletTokenIndex;
+    mapping(uint256 => mapping(uint256 => uint256)) private _rootTokenIndex;
 
     // Transfer control flags — prevent raw ERC721 transfers
     bool private _internalTransferActive;
@@ -119,8 +127,10 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
             transferCount: 0
         });
 
-        rootToTokenIds[rootId].push(tokenId);
+        _walletTokenIndex[to][tokenId] = walletTokens[to].length;
         walletTokens[to].push(tokenId);
+        _rootTokenIndex[rootId][tokenId] = rootToTokenIds[rootId].length;
+        rootToTokenIds[rootId].push(tokenId);
         transferHistory[tokenId].push(to);
 
         hasProfile[to] = true;
@@ -164,8 +174,10 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
             transferCount: 0
         });
 
-        rootToTokenIds[rootId].push(tokenId);
+        _walletTokenIndex[msg.sender][tokenId] = walletTokens[msg.sender].length;
         walletTokens[msg.sender].push(tokenId);
+        _rootTokenIndex[rootId][tokenId] = rootToTokenIds[rootId].length;
+        rootToTokenIds[rootId].push(tokenId);
         transferHistory[tokenId].push(msg.sender);
 
         emit Events.TokenCreated(tokenId, rootId, tokenName, tokenType);
@@ -196,6 +208,7 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
 
         // Update wallet indices
         _removeFromWalletList(msg.sender, tokenId);
+        _walletTokenIndex[sendingTo][tokenId] = walletTokens[sendingTo].length;
         walletTokens[sendingTo].push(tokenId);
 
         // Execute controlled transfer
@@ -210,9 +223,12 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
         if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
         if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) revert Errors.NotToken();
 
-        // If burning a profile token, clear the wallet's profile flag
+        // If burning a profile token, clear the wallet's profile flag and clean up ProfileSystem state
         if (tokenTypes[tokenId] == DataTypes.TokenType.PROFILE) {
             hasProfile[msg.sender] = false;
+            if (profileSystem != address(0)) {
+                IProfileSystem(profileSystem).cleanupBurnedProfile(tokenId);
+            }
         }
 
         uint256 rootId = tokens[tokenId].parentRootId;
@@ -269,7 +285,8 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
     }
 
     function _requireNotSelfEndorsement(uint256 endorserRootId, uint256 tokenId) internal view override {
-        if (endorserRootId == tokens[tokenId].parentRootId) revert Errors.CannotEndorseOwnToken();
+        uint256 ownerRootId = ownerToRootId[ownerOf(tokenId)];
+        if (endorserRootId == ownerRootId) revert Errors.CannotEndorseOwnToken();
     }
 
     function _incrementTotalEndorsementCount(uint256 tokenId) internal override {
@@ -313,33 +330,40 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
     }
 
     function _requireNotSelfFlag(uint256 callerRootId, uint256 tokenId) internal view override {
-        if (callerRootId == tokens[tokenId].parentRootId) revert Errors.CannotFlagOwnToken();
+        uint256 ownerRootId = ownerToRootId[ownerOf(tokenId)];
+        if (callerRootId == ownerRootId) revert Errors.CannotFlagOwnToken();
     }
 
     // Internal Helpers
 
     function _removeFromWalletList(address wallet, uint256 tokenId) internal {
         uint256[] storage list = walletTokens[wallet];
-        uint256 len = list.length;
-        for (uint256 i = 0; i < len; i++) {
-            if (list[i] == tokenId) {
-                list[i] = list[len - 1];
-                list.pop();
-                return;
-            }
+        uint256 index = _walletTokenIndex[wallet][tokenId];
+        uint256 lastIndex = list.length - 1;
+
+        if (index != lastIndex) {
+            uint256 lastTokenId = list[lastIndex];
+            list[index] = lastTokenId;
+            _walletTokenIndex[wallet][lastTokenId] = index;
         }
+
+        list.pop();
+        delete _walletTokenIndex[wallet][tokenId];
     }
 
     function _removeFromRootTokenList(uint256 rootId, uint256 tokenId) internal {
         uint256[] storage list = rootToTokenIds[rootId];
-        uint256 len = list.length;
-        for (uint256 i = 0; i < len; i++) {
-            if (list[i] == tokenId) {
-                list[i] = list[len - 1];
-                list.pop();
-                return;
-            }
+        uint256 index = _rootTokenIndex[rootId][tokenId];
+        uint256 lastIndex = list.length - 1;
+
+        if (index != lastIndex) {
+            uint256 lastTokenId = list[lastIndex];
+            list[index] = lastTokenId;
+            _rootTokenIndex[rootId][lastTokenId] = index;
         }
+
+        list.pop();
+        delete _rootTokenIndex[rootId][tokenId];
     }
 
     // View Functions

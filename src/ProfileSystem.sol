@@ -17,6 +17,7 @@ contract ProfileSystem {
     mapping(string => bool) public usernameTaken;
     mapping(address => bool) public hasMintedProfile;
     mapping(uint256 => DataTypes.ProfileMetadata) public profiles;
+    mapping(string => uint256) public usernameToProfileTokenId;
 
     // Constructor
 
@@ -49,8 +50,31 @@ contract ProfileSystem {
         // Store metadata
         profiles[tokenId] = data;
 
+        // Store username → tokenId reverse lookup
+        usernameToProfileTokenId[data.username] = tokenId;
+
         emit Events.ProfileCreated(tokenId, msg.sender, data.username);
         return tokenId;
+    }
+
+    // Profile Burn Cleanup (called by IdentitySystem when a profile token is burned)
+
+    function cleanupBurnedProfile(uint256 tokenId) external {
+        if (msg.sender != address(identitySystem)) revert Errors.OnlyIdentitySystem();
+
+        DataTypes.ProfileMetadata storage profile = profiles[tokenId];
+        string memory username = profile.username;
+
+        // Release the username reservation so it can be claimed by someone else
+        if (bytes(username).length > 0) {
+            delete usernameTaken[username];
+            delete usernameToProfileTokenId[username];
+        }
+
+        // Clear metadata
+        delete profiles[tokenId];
+
+        // Note: hasMintedProfile stays true — permanent mint guard (user already used their one-time mint)
     }
 
     // View Functions
