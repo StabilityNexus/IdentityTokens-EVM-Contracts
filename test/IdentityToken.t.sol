@@ -3,13 +3,14 @@ pragma solidity ^0.8.24;
 
 import { Test } from "forge-std/Test.sol";
 import { IdentitySystem } from "../src/IdentitySystem.sol";
+import { ProfileSystem } from "../src/ProfileSystem.sol";
 import { DataTypes } from "../src/libraries/DataTypes.sol";
 import { Errors } from "../src/libraries/Errors.sol";
 import { Events } from "../src/libraries/Events.sol";
-import { Schema } from "../src/libraries/Schema.sol";
 
 contract IdentitySystemTest is Test {
     IdentitySystem public identitySystem;
+    ProfileSystem public profileSystem;
 
     address public alice = address(0x1);
     address public bob = address(0x2);
@@ -17,12 +18,14 @@ contract IdentitySystemTest is Test {
 
     function setUp() public {
         identitySystem = new IdentitySystem();
+        profileSystem = new ProfileSystem(address(identitySystem));
+        identitySystem.setProfileSystem(address(profileSystem));
     }
 
     /// @dev Helper: creates `count` fresh root identities (starting at `startAddr`)
-    ///      and has each one endorse `subTokenId` with the given duration.
+    ///      and has each one endorse `tokenId` with the given duration.
     function _createEndorsers(
-        uint256 subTokenId,
+        uint256 tokenId,
         uint160 startAddr,
         uint256 count,
         uint256 duration
@@ -30,13 +33,9 @@ contract IdentitySystemTest is Test {
         for (uint256 i = 0; i < count; i++) {
             address endorser = address(startAddr + uint160(i));
             vm.prank(endorser);
-            identitySystem.createRootIdentity(
-                string(abi.encodePacked("e", vm.toString(startAddr + uint160(i)))),
-                "",
-                bytes("")
-            );
+            identitySystem.createRootIdentity("");
             vm.prank(endorser);
-            identitySystem.endorseSubToken(subTokenId, duration);
+            identitySystem.endorseToken(tokenId, duration);
         }
         return startAddr + uint160(count);
     }
@@ -47,69 +46,40 @@ contract IdentitySystemTest is Test {
 
     function test_CreateRootIdentity() public {
         vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("alice", "Alice Nakamoto", bytes("metadata"));
+        uint256 rootId = identitySystem.createRootIdentity("Alice Nakamoto");
 
         assertEq(rootId, 1);
         assertEq(identitySystem.ownerOf(1), alice);
-        assertTrue(identitySystem.usernameTaken("alice"));
-        assertEq(identitySystem.usernameToRootId("alice"), 1);
         assertEq(identitySystem.ownerToRootId(alice), 1);
         assertEq(uint8(identitySystem.tokenTypes(1)), uint8(DataTypes.TokenType.ROOT));
     }
 
     function test_CreateRootIdentity_WithEmptyDisplayName() public {
         vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("alice", "", bytes(""));
+        uint256 rootId = identitySystem.createRootIdentity("");
 
         assertEq(rootId, 1);
     }
 
-    function test_RevertIf_CreateRootIdentity_TooShort() public {
-        vm.expectRevert(Errors.UsernameTooShort.selector);
-        vm.prank(alice);
-        identitySystem.createRootIdentity("ab", "A", bytes(""));
-    }
-
-    function test_RevertIf_CreateRootIdentity_TooLong() public {
-        vm.prank(alice);
-        vm.expectRevert(Errors.UsernameTooLong.selector);
-        identitySystem.createRootIdentity("abcdefghijklmnopqrstuvwxyz0123456789", "A", bytes(""));
-    }
-
-    function test_RevertIf_CreateRootIdentity_Taken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
-
-        vm.prank(bob);
-        vm.expectRevert(Errors.UsernameTaken.selector);
-        identitySystem.createRootIdentity("alice", "Bob", bytes(""));
-    }
-
     function test_RevertIf_CreateRootIdentity_AlreadyHasRoot() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyHasRoot.selector);
-        identitySystem.createRootIdentity("alice2", "Alice2", bytes(""));
-    }
-
-    function test_RevertIf_CreateRootIdentity_InvalidChar() public {
-        vm.prank(alice);
-        vm.expectRevert(Errors.InvalidUsernameChar.selector);
-        identitySystem.createRootIdentity("alice!", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice2");
     }
 
     // =========================================================================
-    // Sub-token
+    // Token
     // =========================================================================
 
-    function test_CreateSubToken() public {
+    function test_CreateToken() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken(
+        uint256 subId = identitySystem.createToken(
             "GitHub",
             "social",
             bytes("https://github.com/alice"),
@@ -121,33 +91,33 @@ contract IdentitySystemTest is Test {
         assertEq(identitySystem.ownerOf(2), alice);
         assertEq(uint8(identitySystem.tokenTypes(2)), uint8(DataTypes.TokenType.SUB));
 
-        uint256[] memory subIds = identitySystem.getSubTokensForRoot(1);
+        uint256[] memory subIds = identitySystem.getTokensForRoot(1);
         assertEq(subIds.length, 1);
         assertEq(subIds[0], 2);
     }
 
-    function test_RevertIf_CreateSubToken_NoRoot() public {
+    function test_RevertIf_CreateToken_NoRoot() public {
         vm.prank(alice);
         vm.expectRevert(Errors.NoRootIdentity.selector);
-        identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
     }
 
     // =========================================================================
     // Endorsement (time-based validity)
     // =========================================================================
 
-    function test_EndorseSubToken() public {
+    function test_EndorseToken() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
         assertEq(endorsements.length, 1);
@@ -155,103 +125,103 @@ contract IdentitySystemTest is Test {
         assertEq(endorsements[0].expiresAt, block.timestamp + 365 days);
 
         // Verify cached counter
-        (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
 
         // Verify dynamic count
         assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
     }
 
-    function test_EndorseSubToken_3YearDuration() public {
+    function test_EndorseToken_3YearDuration() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 3 * 365 days);
+        identitySystem.endorseToken(subId, 3 * 365 days);
 
         DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
         assertEq(endorsements[0].expiresAt, block.timestamp + 3 * 365 days);
     }
 
-    function test_EndorseSubToken_CustomDuration_60Days() public {
+    function test_EndorseToken_CustomDuration_60Days() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 60 days);
+        identitySystem.endorseToken(subId, 60 days);
 
         DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
         assertEq(endorsements[0].expiresAt, block.timestamp + 60 days);
     }
 
-    function test_RevertIf_EndorseSubToken_NoRoot() public {
+    function test_RevertIf_EndorseToken_NoRoot() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(charlie);
         vm.expectRevert(Errors.NoRootIdentity.selector);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
     }
 
-    function test_RevertIf_EndorseSubToken_SelfEndorsement() public {
+    function test_RevertIf_EndorseToken_SelfEndorsement() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
         vm.expectRevert(Errors.CannotEndorseOwnToken.selector);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
     }
 
-    function test_RevertIf_EndorseSubToken_AlreadyEndorsed() public {
+    function test_RevertIf_EndorseToken_AlreadyEndorsed() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         vm.prank(bob);
         vm.expectRevert(Errors.AlreadyEndorsed.selector);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
     }
 
     // =========================================================================
-    // Endorsement clamping to sub-token validity
+    // Endorsement clamping to token validity
     // =========================================================================
 
-    function test_EndorsementClamped_ToSubTokenValidity() public {
+    function test_EndorsementClamped_ToTokenValidity() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
-        // Sub-token valid for 2 years
+        // Token valid for 2 years
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken(
+        uint256 subId = identitySystem.createToken(
             "Education",
             "credential",
             bytes(""),
@@ -259,28 +229,28 @@ contract IdentitySystemTest is Test {
             block.timestamp + 2 * 365 days
         );
 
-        // Bob endorses for 5 years — should be clamped to 2 years (sub-token validity)
+        // Bob endorses for 5 years — should be clamped to 2 years (token validity)
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 5 * 365 days);
+        identitySystem.endorseToken(subId, 5 * 365 days);
 
         DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
         assertEq(endorsements[0].expiresAt, block.timestamp + 2 * 365 days);
     }
 
-    function test_EndorsementClamped_SubTokenExpiresTooSoon() public {
+    function test_EndorsementClamped_TokenExpiresTooSoon() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
-        // Sub-token valid for only 5 days — less than MIN_ENDORSEMENT_DURATION
+        // Token valid for only 5 days — less than MIN_ENDORSEMENT_DURATION
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("Temp", "credential", bytes(""), "", block.timestamp + 5 days);
+        uint256 subId = identitySystem.createToken("Temp", "credential", bytes(""), "", block.timestamp + 5 days);
 
         // Bob tries to endorse for 30 days — clamping will silently set to 5 days
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 30 days);
+        identitySystem.endorseToken(subId, 30 days);
 
         DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
         assertEq(endorsements[0].expiresAt, block.timestamp + 5 days);
@@ -292,16 +262,16 @@ contract IdentitySystemTest is Test {
 
     function test_EndorsementExpires_AfterValidity() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         // Still active before expiry
         assertTrue(identitySystem.hasEndorsed(2, subId));
@@ -320,46 +290,46 @@ contract IdentitySystemTest is Test {
 
     function test_ReEndorse_AfterExpiry() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Bob endorses with 1-year validity
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
 
         // Bob can re-endorse after expiry
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 3 * 365 days);
+        identitySystem.endorseToken(subId, 3 * 365 days);
 
         assertTrue(identitySystem.hasEndorsed(2, subId));
         assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
 
         // totalEndorsementCount should still be 1 (same endorser, not inflated)
-        (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
     }
 
     function test_ReEndorse_AfterRevocation() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Bob endorses
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         // Bob revokes
         vm.prank(bob);
@@ -367,12 +337,12 @@ contract IdentitySystemTest is Test {
 
         // Bob can re-endorse after revoking
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 3 * 365 days);
+        identitySystem.endorseToken(subId, 3 * 365 days);
 
         assertTrue(identitySystem.hasEndorsed(2, subId));
 
         // totalEndorsementCount should still be 1 (re-endorsement doesn't inflate)
-        (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
     }
 
@@ -382,31 +352,31 @@ contract IdentitySystemTest is Test {
 
     function test_EndorseRevokeLoop_DoesNotInflateTotalCount() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Bob does 5 endorse-revoke cycles
         for (uint256 i = 0; i < 5; i++) {
             vm.prank(bob);
-            identitySystem.endorseSubToken(subId, 365 days);
+            identitySystem.endorseToken(subId, 365 days);
 
             vm.prank(bob);
             identitySystem.revokeEndorsement(subId);
         }
 
         // totalEndorsementCount should be 1, not 5 (only counted once per endorser)
-        (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
         // revokedCount should ALSO be 1, not 5 (only counted once per endorser)
         assertEq(revokedCount, 1);
 
         // But auto-flag should NOT trigger: totalEndorsementCount=1 < MIN_ENDORSEMENTS_FOR_AUTO_FLAG=20
-        (, , , , , , , , , , bool isFlagged, , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlagged, , ) = identitySystem.tokens(subId);
         assertFalse(isFlagged);
     }
 
@@ -416,16 +386,16 @@ contract IdentitySystemTest is Test {
 
     function test_RevokeEndorsement() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         vm.prank(bob);
         identitySystem.revokeEndorsement(subId);
@@ -434,7 +404,7 @@ contract IdentitySystemTest is Test {
         assertGt(endorsements[0].revokedAt, 0);
 
         // Verify cached counters updated
-        (, , , , , , , , , uint256 revokedCount, , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , uint256 revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(revokedCount, 1);
 
         // Verify dynamic count
@@ -443,13 +413,13 @@ contract IdentitySystemTest is Test {
 
     function test_RevertIf_RevokeEndorsement_NoActiveEndorsement() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Bob has not endorsed — revoke should fail
         vm.prank(bob);
@@ -459,16 +429,16 @@ contract IdentitySystemTest is Test {
 
     function test_RevertIf_RevokeEndorsement_AlreadyRevoked() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         vm.prank(bob);
         identitySystem.revokeEndorsement(subId);
@@ -480,19 +450,19 @@ contract IdentitySystemTest is Test {
 
     function test_RevertIf_RevokeEndorsement_NonEndorser() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(charlie);
-        identitySystem.createRootIdentity("charlie", "Charlie", bytes(""));
+        identitySystem.createRootIdentity("Charlie");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         // Charlie never endorsed — trying to revoke should fail
         vm.prank(charlie);
@@ -502,16 +472,16 @@ contract IdentitySystemTest is Test {
 
     function test_RevertIf_RevokeEndorsement_Expired() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
@@ -528,16 +498,16 @@ contract IdentitySystemTest is Test {
 
     function test_GetActiveEndorsements() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         DataTypes.Endorsement[] memory active = identitySystem.getActiveEndorsements(subId);
         assertEq(active.length, 1);
@@ -551,22 +521,22 @@ contract IdentitySystemTest is Test {
 
     function test_GetActiveEndorsementCount() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(charlie);
-        identitySystem.createRootIdentity("charlie", "Charlie", bytes(""));
+        identitySystem.createRootIdentity("Charlie");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Two endorsements
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
         vm.prank(charlie);
-        identitySystem.endorseSubToken(subId, 3 * 365 days);
+        identitySystem.endorseToken(subId, 3 * 365 days);
 
         assertEq(identitySystem.getActiveEndorsementCount(subId), 2);
 
@@ -581,16 +551,16 @@ contract IdentitySystemTest is Test {
 
     function test_GetEndorsementsByEndorser() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         uint256[] memory endorsed = identitySystem.getEndorsementsByEndorser(2);
         assertEq(endorsed.length, 1);
@@ -599,16 +569,16 @@ contract IdentitySystemTest is Test {
 
     function test_GetEndorsementsByEndorser_ExcludesExpired() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
@@ -619,18 +589,18 @@ contract IdentitySystemTest is Test {
 
     function test_HasEndorsed() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         assertFalse(identitySystem.hasEndorsed(2, subId));
 
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
         assertTrue(identitySystem.hasEndorsed(2, subId));
     }
@@ -639,15 +609,15 @@ contract IdentitySystemTest is Test {
     // Transfer (controlled) — endorsements persist
     // =========================================================================
 
-    function test_TransferSubToken() public {
+    function test_TransferToken() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        identitySystem.transferSubToken(subId, bob);
+        identitySystem.transferToken(subId, bob);
 
         assertEq(identitySystem.ownerOf(subId), bob);
 
@@ -656,19 +626,19 @@ contract IdentitySystemTest is Test {
         assertEq(history[1], bob);
     }
 
-    function test_TransferSubToken_PreservesEndorsements() public {
+    function test_TransferToken_PreservesEndorsements() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Bob endorses with 3-year validity
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 3 * 365 days);
+        identitySystem.endorseToken(subId, 3 * 365 days);
 
         // Before transfer: 1 active endorsement
         assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
@@ -676,7 +646,7 @@ contract IdentitySystemTest is Test {
 
         // Transfer — endorsements persist (passport model)
         vm.prank(alice);
-        identitySystem.transferSubToken(subId, charlie);
+        identitySystem.transferToken(subId, charlie);
 
         // After transfer: endorsement still active
         assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
@@ -687,207 +657,207 @@ contract IdentitySystemTest is Test {
         assertEq(active[0].endorserTokenId, 2);
     }
 
-    function test_RevertIf_TransferSubToken_NotHolder() public {
+    function test_RevertIf_TransferToken_NotHolder() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotHolder.selector);
-        identitySystem.transferSubToken(subId, bob);
+        identitySystem.transferToken(subId, bob);
     }
 
     function test_RevertIf_TransferRootToken() public {
         vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        uint256 rootId = identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.CannotTransferRoot.selector);
-        identitySystem.transferSubToken(rootId, bob);
+        identitySystem.transferToken(rootId, bob);
     }
 
-    function test_RevertIf_TransferSubToken_SelfTransfer() public {
+    function test_RevertIf_TransferToken_SelfTransfer() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
         vm.expectRevert(Errors.SelfTransfer.selector);
-        identitySystem.transferSubToken(subId, alice);
+        identitySystem.transferToken(subId, alice);
     }
 
-    function test_RevertIf_TransferSubToken_ZeroAddress() public {
+    function test_RevertIf_TransferToken_ZeroAddress() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
         vm.expectRevert(Errors.ZeroAddress.selector);
-        identitySystem.transferSubToken(subId, address(0));
+        identitySystem.transferToken(subId, address(0));
     }
 
-    function test_RevertIf_TransferSubToken_Expired() public {
+    function test_RevertIf_TransferToken_Expired() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
 
         vm.warp(block.timestamp + 200);
 
         vm.prank(alice);
         vm.expectRevert(Errors.TokenExpired.selector);
-        identitySystem.transferSubToken(subId, bob);
+        identitySystem.transferToken(subId, bob);
     }
 
     // =========================================================================
-    // Burn Sub-token
+    // Burn Token
     // =========================================================================
 
-    function test_BurnSubToken() public {
+    function test_BurnToken() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
 
         vm.expectRevert();
         identitySystem.ownerOf(subId);
     }
 
-    function test_BurnSubToken_EmitsEvent() public {
+    function test_BurnToken_EmitsEvent() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.expectEmit(true, true, false, true);
-        emit Events.SubTokenBurned(subId, 1);
+        emit Events.TokenBurned(subId, 1);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
     }
 
     function test_BurnedTokenCannotBeEndorsed() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
 
         vm.prank(bob);
-        vm.expectRevert(Errors.NotSubToken.selector);
-        identitySystem.endorseSubToken(subId, 365 days);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.endorseToken(subId, 365 days);
     }
 
-    function test_BurnSubToken_RemovesFromWalletList() public {
+    function test_BurnToken_RemovesFromWalletList() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        uint256[] memory walletBefore = identitySystem.getWalletSubTokens(alice);
+        uint256[] memory walletBefore = identitySystem.getWalletTokens(alice);
         assertEq(walletBefore.length, 1);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
 
-        uint256[] memory walletAfter = identitySystem.getWalletSubTokens(alice);
+        uint256[] memory walletAfter = identitySystem.getWalletTokens(alice);
         assertEq(walletAfter.length, 0);
     }
 
-    function test_RevertIf_BurnSubToken_NotHolder() public {
+    function test_RevertIf_BurnToken_NotHolder() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotHolder.selector);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
     }
 
-    function test_RevertIf_BurnSubToken_NotSubToken() public {
+    function test_RevertIf_BurnToken_NotToken() public {
         vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        uint256 rootId = identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        vm.expectRevert(Errors.NotSubToken.selector);
-        identitySystem.burnSubToken(rootId);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.burnToken(rootId);
     }
 
-    function test_RevertIf_BurnSubToken_AlreadyBurned() public {
+    function test_RevertIf_BurnToken_AlreadyBurned() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
 
         vm.prank(alice);
         vm.expectRevert();
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
     }
 
-    function test_BurnSubToken_RemovesFromRootSubTokenList() public {
+    function test_BurnToken_RemovesFromRootTokenList() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId1 = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId1 = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        uint256 subId2 = identitySystem.createSubToken("Twitter", "social", bytes(""), "", 0);
+        uint256 subId2 = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
 
-        uint256[] memory subsBefore = identitySystem.getSubTokensForRoot(1);
+        uint256[] memory subsBefore = identitySystem.getTokensForRoot(1);
         assertEq(subsBefore.length, 2);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId1);
+        identitySystem.burnToken(subId1);
 
-        uint256[] memory subsAfter = identitySystem.getSubTokensForRoot(1);
+        uint256[] memory subsAfter = identitySystem.getTokensForRoot(1);
         assertEq(subsAfter.length, 1);
         assertEq(subsAfter[0], subId2);
 
         DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(1);
-        assertEq(rootView.subTokenCount, 1);
+        assertEq(rootView.tokenCount, 1);
     }
 
-    function test_BurnSubToken_RemovesFromRootSubTokenList_SingleToken() public {
+    function test_BurnToken_RemovesFromRootTokenList_SingleToken() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        identitySystem.burnSubToken(subId);
+        identitySystem.burnToken(subId);
 
-        uint256[] memory subsAfter = identitySystem.getSubTokensForRoot(1);
+        uint256[] memory subsAfter = identitySystem.getTokensForRoot(1);
         assertEq(subsAfter.length, 0);
 
         DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(1);
-        assertEq(rootView.subTokenCount, 0);
+        assertEq(rootView.tokenCount, 0);
     }
 
     // =========================================================================
@@ -896,57 +866,27 @@ contract IdentitySystemTest is Test {
 
     function test_GetRootIdentityView() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice Nakamoto", bytes("metadata"));
+        identitySystem.createRootIdentity("Alice Nakamoto");
 
         DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(1);
 
         assertEq(rootView.tokenId, 1);
-        assertEq(rootView.username, "alice");
-        assertEq(rootView.owner, alice);
+        assertEq(rootView.walletAddress, alice);
+        assertEq(rootView.displayName, "Alice Nakamoto");
         assertTrue(rootView.isActive);
-        assertEq(rootView.subTokenCount, 0);
+        assertEq(rootView.tokenCount, 0);
     }
 
-    function test_ResolveUsername() public {
+    function test_GetWalletTokens() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
-
-        assertEq(identitySystem.resolveUsername("alice"), 1);
-        assertEq(identitySystem.resolveUsername("bob"), 0);
-    }
-
-    function test_GetWalletSubTokens() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        uint256[] memory walletTokens = identitySystem.getWalletSubTokens(alice);
-        assertEq(walletTokens.length, 1);
-        assertEq(walletTokens[0], subId);
-    }
-
-    // =========================================================================
-    // Username validation
-    // =========================================================================
-
-    function test_Username_AllowedChars() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("alice_007", "Alice", bytes(""));
-        assertTrue(identitySystem.usernameTaken("alice_007"));
-    }
-
-    function test_RevertIf_Username_InvalidDash() public {
-        vm.prank(alice);
-        vm.expectRevert(Errors.InvalidUsernameChar.selector);
-        identitySystem.createRootIdentity("alice-bob", "Alice", bytes(""));
-    }
-
-    function test_RevertIf_Username_InvalidSpace() public {
-        vm.prank(alice);
-        vm.expectRevert(Errors.InvalidUsernameChar.selector);
-        identitySystem.createRootIdentity("alice bob", "Alice", bytes(""));
+        uint256[] memory walletToks = identitySystem.getWalletTokens(alice);
+        assertEq(walletToks.length, 1);
+        assertEq(walletToks[0], subId);
     }
 
     // =========================================================================
@@ -955,10 +895,10 @@ contract IdentitySystemTest is Test {
 
     function test_AutoFlag_WhenThresholdExceeded() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // 21 endorsements from 21 different users — exceeds MIN_ENDORSEMENTS_FOR_AUTO_FLAG (20)
         _createEndorsers(subId, 100, 21, 365 days);
@@ -970,17 +910,17 @@ contract IdentitySystemTest is Test {
             identitySystem.revokeEndorsement(subId);
         }
 
-        (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.tokens(subId);
         assertTrue(isFlagged);
         assertEq(flagCount, 1);
     }
 
     function test_AutoFlag_DoesNotTrigger_BelowMinEndorsements() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Only 3 endorsements — below the MIN_ENDORSEMENTS_FOR_AUTO_FLAG (20)
         _createEndorsers(subId, 200, 3, 365 days);
@@ -992,7 +932,7 @@ contract IdentitySystemTest is Test {
             identitySystem.revokeEndorsement(subId);
         }
 
-        (, , , , , , , , , , bool isFlagged, , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlagged, , ) = identitySystem.tokens(subId);
         assertFalse(isFlagged);
     }
 
@@ -1000,157 +940,157 @@ contract IdentitySystemTest is Test {
     // Manual Flag — increments flagCount but does NOT set isFlagged
     // =========================================================================
 
-    function test_FlagSubToken_IncrementsFlagCount_ButNotIsFlagged() public {
+    function test_FlagToken_IncrementsFlagCount_ButNotIsFlagged() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
 
-        (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.tokens(subId);
         assertFalse(isFlagged); // Manual flag does NOT set isFlagged
         assertEq(flagCount, 1); // But flagCount is incremented for analytics
     }
 
-    function test_FlagSubToken_EmitsEvent() public {
+    function test_FlagToken_EmitsEvent() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.expectEmit(true, true, false, true);
-        emit Events.SubTokenFlagged(subId, bob, 1);
+        emit Events.TokenFlagged(subId, bob, 1);
 
         vm.prank(bob);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
     }
 
-    function test_FlagSubToken_MultipleFlaggers() public {
+    function test_FlagToken_MultipleFlaggers() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(charlie);
-        identitySystem.createRootIdentity("charlie", "Charlie", bytes(""));
+        identitySystem.createRootIdentity("Charlie");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
 
         vm.prank(charlie);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
 
-        (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.tokens(subId);
         assertFalse(isFlagged); // Still not flagged — manual only
         assertEq(flagCount, 2);
     }
 
-    function test_RevertIf_FlagSubToken_DuplicateByRoot() public {
+    function test_RevertIf_FlagToken_DuplicateByRoot() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
 
         vm.prank(bob);
         vm.expectRevert(Errors.AlreadyFlaggedByRoot.selector);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
     }
 
-    function test_RevertIf_FlagSubToken_NoRoot() public {
+    function test_RevertIf_FlagToken_NoRoot() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(charlie);
         vm.expectRevert(Errors.NoRootIdentity.selector);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
     }
 
-    function test_RevertIf_FlagSubToken_NotSubToken() public {
+    function test_RevertIf_FlagToken_NotToken() public {
         vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        uint256 rootId = identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(bob);
-        vm.expectRevert(Errors.NotSubToken.selector);
-        identitySystem.flagSubToken(rootId);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.flagToken(rootId);
     }
 
-    function test_RevertIf_FlagSubToken_Expired() public {
+    function test_RevertIf_FlagToken_Expired() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
 
         vm.warp(block.timestamp + 200);
 
         vm.prank(bob);
         vm.expectRevert(Errors.TokenExpired.selector);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
     }
 
-    function test_RevertIf_FlagSubToken_SelfFlag() public {
+    function test_RevertIf_FlagToken_SelfFlag() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
         vm.expectRevert(Errors.CannotFlagOwnToken.selector);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
     }
 
     function test_ManualFlag_DoesNotBlock_AutoFlag() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(charlie);
-        identitySystem.createRootIdentity("charlie", "Charlie", bytes(""));
+        identitySystem.createRootIdentity("Charlie");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // 20 endorsements from 20 different users (meets minimum floor)
         _createEndorsers(subId, 300, 20, 365 days);
 
         // Charlie manually flags (flagCount = 1, isFlagged = false)
         vm.prank(charlie);
-        identitySystem.flagSubToken(subId);
+        identitySystem.flagToken(subId);
 
-        (, , , , , , , , , , bool isFlaggedBefore, uint256 flagCountBefore, ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlaggedBefore, uint256 flagCountBefore, ) = identitySystem.tokens(subId);
         assertFalse(isFlaggedBefore); // Manual flag does NOT set isFlagged
         assertEq(flagCountBefore, 1);
 
@@ -1161,7 +1101,7 @@ contract IdentitySystemTest is Test {
             identitySystem.revokeEndorsement(subId);
         }
 
-        (, , , , , , , , , , bool isFlaggedAfter, uint256 flagCountAfter, ) = identitySystem.subTokens(subId);
+        (, , , , , , , , , , bool isFlaggedAfter, uint256 flagCountAfter, ) = identitySystem.tokens(subId);
         assertTrue(isFlaggedAfter); // NOW isFlagged is true (auto-flag consensus)
         assertEq(flagCountAfter, 2); // manual (1) + auto (1) = 2
     }
@@ -1172,31 +1112,31 @@ contract IdentitySystemTest is Test {
 
     function test_CachedCounters_TrackEndorsementsAccurately() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
-        identitySystem.createRootIdentity("bob", "Bob", bytes(""));
+        identitySystem.createRootIdentity("Bob");
 
         vm.prank(charlie);
-        identitySystem.createRootIdentity("charlie", "Charlie", bytes(""));
+        identitySystem.createRootIdentity("Charlie");
 
         vm.prank(alice);
-        uint256 subId = identitySystem.createSubToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         // Bob endorses
         vm.prank(bob);
-        identitySystem.endorseSubToken(subId, 365 days);
+        identitySystem.endorseToken(subId, 365 days);
 
-        (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
         assertEq(revokedCount, 0);
         assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
 
         // Charlie endorses
         vm.prank(charlie);
-        identitySystem.endorseSubToken(subId, 3 * 365 days);
+        identitySystem.endorseToken(subId, 3 * 365 days);
 
-        (, , , , , , , , totalCount, revokedCount, , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , totalCount, revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 2);
         assertEq(revokedCount, 0);
         assertEq(identitySystem.getActiveEndorsementCount(subId), 2);
@@ -1205,24 +1145,439 @@ contract IdentitySystemTest is Test {
         vm.prank(bob);
         identitySystem.revokeEndorsement(subId);
 
-        (, , , , , , , , totalCount, revokedCount, , , ) = identitySystem.subTokens(subId);
+        (, , , , , , , , totalCount, revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 2);
         assertEq(revokedCount, 1);
         assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
     }
 
     // =========================================================================
-    // Sub-token expiry
+    // Token expiry
     // =========================================================================
 
-    function test_RevertIf_CreateSubToken_InvalidExpiry() public {
+    function test_RevertIf_CreateToken_InvalidExpiry() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("alice", "Alice", bytes(""));
+        identitySystem.createRootIdentity("Alice");
 
         vm.warp(1000);
 
         vm.prank(alice);
         vm.expectRevert(Errors.InvalidExpiry.selector);
-        identitySystem.createSubToken("GitHub", "social", bytes(""), "", block.timestamp - 1);
+        identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp - 1);
+    }
+
+    // =========================================================================
+    // Profile System
+    // =========================================================================
+
+    function test_CreateProfile() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice Nakamoto",
+            username: "alice",
+            age: 25,
+            nationality: "US",
+            github: "https://github.com/alice",
+            email: "alice@example.com",
+            discord: "alice#1234",
+            xDotCom: "@alice",
+            websitePortfolioLink: "https://alice.dev",
+            ens: "alice.eth"
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        assertEq(identitySystem.ownerOf(profileId), alice);
+        assertEq(uint8(identitySystem.tokenTypes(profileId)), uint8(DataTypes.TokenType.PROFILE));
+        assertTrue(identitySystem.hasProfile(alice));
+        assertTrue(profileSystem.usernameTaken("alice"));
+        assertTrue(profileSystem.hasMintedProfile(alice));
+    }
+
+    function test_CreateProfile_MinimalFields() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        assertEq(identitySystem.ownerOf(profileId), alice);
+    }
+
+    function test_RevertIf_CreateProfile_NoName() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileNameRequired.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    function test_RevertIf_CreateProfile_UsernameTooShort() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "ab",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileUsernameTooShort.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    // =========================================================================
+    // Profile System tests continued
+    // =========================================================================
+
+    function test_RevertIf_CreateProfile_UsernameTooLong() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "abcdefghijklmnopqrstuvwxyz0123456789",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileUsernameTooLong.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    function test_RevertIf_CreateProfile_InvalidUsernameChar() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice!",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.InvalidProfileUsernameChar.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    function test_RevertIf_CreateProfile_UsernameTaken() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        profileSystem.createProfile(meta);
+
+        meta.name = "Bob";
+        // same username "alice"
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.ProfileUsernameTaken.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    function test_RevertIf_CreateProfile_AlreadyMinted() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        profileSystem.createProfile(meta);
+
+        meta.username = "alice2";
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.AlreadyMintedProfile.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    function test_ProfileTransfer_PreventsRecipientDuplicateProfile() public {
+        // Alice creates root + profile
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+
+        DataTypes.ProfileMetadata memory metaAlice = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        DataTypes.ProfileMetadata memory metaBob = DataTypes.ProfileMetadata({
+            name: "Bob",
+            username: "bob_x",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        uint256 aliceProfileId = profileSystem.createProfile(metaAlice);
+
+        vm.prank(bob);
+        uint256 bobProfileId = profileSystem.createProfile(metaBob);
+
+        // Alice tries to transfer her profile to Bob who already has one
+        vm.prank(alice);
+        vm.expectRevert(Errors.RecipientAlreadyHasProfile.selector);
+        identitySystem.transferToken(aliceProfileId, bob);
+    }
+
+    function test_ProfileTransfer_Success() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        // Transfer to bob (who has no profile)
+        vm.prank(alice);
+        identitySystem.transferToken(profileId, bob);
+
+        assertEq(identitySystem.ownerOf(profileId), bob);
+        assertFalse(identitySystem.hasProfile(alice));
+        assertTrue(identitySystem.hasProfile(bob));
+
+        // Alice's hasMintedProfile remains true — she can never mint again
+        assertTrue(profileSystem.hasMintedProfile(alice));
+    }
+
+    function test_ProfileMintGuard_PersistsAfterTransfer() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        // Transfer away
+        vm.prank(alice);
+        identitySystem.transferToken(profileId, bob);
+
+        // Alice tries to mint a new profile — should be permanently blocked
+        meta.username = "alice2";
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.AlreadyMintedProfile.selector);
+        profileSystem.createProfile(meta);
+
+        // Bob tries to mint a profile — should be blocked because he already holds one
+        meta.username = "bob";
+        vm.prank(bob);
+        vm.expectRevert(Errors.AlreadyMintedProfile.selector);
+        profileSystem.createProfile(meta);
+    }
+
+    function test_ProfileEndorsement() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        // Bob can endorse Alice's profile token
+        vm.prank(bob);
+        identitySystem.endorseToken(profileId, 365 days);
+
+        assertEq(identitySystem.getActiveEndorsementCount(profileId), 1);
+        assertTrue(identitySystem.hasEndorsed(2, profileId));
+    }
+
+    function test_ProfileFlagging() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            age: 0,
+            nationality: "",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        // Bob can flag Alice's profile token
+        vm.prank(bob);
+        identitySystem.flagToken(profileId);
+
+        (, , , , , , , , , , , uint256 flagCount, ) = identitySystem.tokens(profileId);
+        assertEq(flagCount, 1);
+    }
+
+    function test_GetProfile() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice Nakamoto",
+            username: "alice",
+            age: 25,
+            nationality: "US",
+            github: "https://github.com/alice",
+            email: "alice@example.com",
+            discord: "alice#1234",
+            xDotCom: "@alice",
+            websitePortfolioLink: "https://alice.dev",
+            ens: "alice.eth"
+        });
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
+        assertEq(stored.name, "Alice Nakamoto");
+        assertEq(stored.username, "alice");
+        assertEq(stored.age, 25);
+        assertEq(stored.nationality, "US");
+        assertEq(stored.github, "https://github.com/alice");
+        assertEq(stored.email, "alice@example.com");
+        assertEq(stored.discord, "alice#1234");
+        assertEq(stored.xDotCom, "@alice");
+        assertEq(stored.websitePortfolioLink, "https://alice.dev");
+        assertEq(stored.ens, "alice.eth");
     }
 }
