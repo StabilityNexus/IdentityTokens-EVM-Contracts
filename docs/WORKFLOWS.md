@@ -6,7 +6,7 @@ This document provides an overview of all major workflows in the system. Each se
 
 ## 🔗 Connect Wallet
 
-This is the entry point for users. By connecting a wallet, users can securely interact with the platform, sign transactions, and access features like token creation and endorsements.
+This is the entry point for users. By connecting a wallet, users can securely interact with the platform, sign transactions, and access features like token creation and attestations.
 
 <p align="center">
   <img src="../public/workflows/connect.png" width="600"/>
@@ -54,22 +54,22 @@ This workflow shows how token metadata is retrieved using the token URI. It incl
 
 ---
 
-## 👍 Endorsement Flow
+## 👍 Attestation Flow
 
-Users can endorse a token to validate or support it. This process includes wallet confirmation, on-chain verification, and updating the endorsement state.
+Users can attest a token to validate or support it. This process includes wallet confirmation, on-chain verification, and updating the attestation state.
 
 <p align="center">
-  <img src="../public/workflows/endorsement-flow.png" width="600"/>
+  <img src="../public/workflows/attestation-flow.png" width="600"/>
 </p>
 
 ---
 
-## 🔄 Un-Endorsement Flow
+## 🔄 Un-Attestation Flow
 
-This flow allows users to remove their endorsement. It ensures proper validation and updates the blockchain state accordingly while maintaining data integrity.
+This flow allows users to remove their attestation. It ensures proper validation and updates the blockchain state accordingly while maintaining data integrity.
 
 <p align="center">
-  <img src="../public/workflows/unEndorsement-flow.png" width="600"/>
+  <img src="../public/workflows/unAttestation-flow.png" width="600"/>
 </p>
 
 ---

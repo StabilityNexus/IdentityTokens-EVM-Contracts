@@ -22,8 +22,8 @@ end
 subgraph Protocol["DIT Protocol (On-Chain Source of Truth)"]
     P1[Identity NFT Stored On-Chain]
     P2[Identity Data Publicly Readable]
-    P3[Endorsements Recorded]
-    P4[Endorsements Revoked]
+    P3[Attestations Recorded]
+    P4[Attestations Revoked]
     P5[Compromise Signal Stored]
     P6[Identity Transferable]
 end
@@ -33,7 +33,7 @@ end
 %% =========================
 subgraph Verifier["External Applications / Verifiers"]
     V1[Read Identity Data]
-    V2[Read Endorsements & Revocations]
+    V2[Read Attestations & Revocations]
     V3[Read Compromise Signals]
     V4[Apply Own Trust Rules]
     V5{Trust Decision}
@@ -46,7 +46,7 @@ end
 A1 --> A2 --> A3 --> A4 --> P1
 P1 --> P2
 
-%% ENDORSEMENT FLOW
+%% ATTESTATION FLOW
 P2 --> P3 --> P4 --> P5 --> P6
 
 %% VERIFIER FLOW
@@ -98,7 +98,7 @@ Users add identity claims to their NFT, such as:
 - Social profiles
 - Other verifiable data
 
-Once created, the **Identity token is created** and ready for endorsements.
+Once created, the **Identity token is created** and ready for attestations.
 
 ---
 
@@ -112,14 +112,14 @@ The core identity token exists as an immutable on-chain record.
 ### Identity Data is Publicly Readable
 All identity claims and metadata are publicly accessible for verification.
 
-### Endorsements Issued by Other Identities
-Other identity holders can endorse a user's identity, creating a web of attestations.
+### Attestations Issued by Other Identities
+Other identity holders can attest a user's identity, creating a web of attestations.
 
-### Endorsements Recorded On-Chain
-All endorsements are permanently recorded to the blockchain.
+### Attestations Recorded On-Chain
+All attestations are permanently recorded to the blockchain.
 
-### Endorsements Can Be Revoked
-Endorsers can revoke their endorsements if circumstances change.
+### Attestations Can Be Revoked
+Attesters can revoke their attestations if circumstances change.
 
 ### Compromise or Revocation Signal Stored
 If an identity is compromised or needs to be invalidated, a signal is stored on-chain.
@@ -141,15 +141,15 @@ A third-party application (employer, platform, service provider) wants to verify
 ### Step 2: Reads Identity Token Data
 The verifier reads the on-chain identity claims and metadata.
 
-### Step 3: Reads Endorsements and Revocation Signals
+### Step 3: Reads Attestations and Revocation Signals
 The verifier checks:
-- Who has endorsed this identity
-- Whether any endorsements have been revoked
+- Who has attested this identity
+- Whether any attestations have been revoked
 - Whether compromise signals exist
 
 ### Step 4: Applies Its Own Trust Rules
 The verifier applies its custom trust logic based on:
-- Endorsement patterns
+- Attestation patterns
 - Revocation history
 - Compromise signals
 - Business requirements
@@ -172,10 +172,10 @@ DIT separates **identity facts** (stored on-chain) from **trust interpretation**
 No single authority controls trust decisions. Each verifier defines its own rules.
 
 ### Transparency
-All identity data, endorsements, and revocations are publicly readable and auditable.
+All identity data, attestations, and revocations are publicly readable and auditable.
 
 ### Flexibility
-Verifiers can implement any trust model, from simple endorsement counts to complex graph analysis.
+Verifiers can implement any trust model, from simple attestation counts to complex graph analysis.
 
 ### User Control
 Users own their identity NFT and can transfer it between wallets while maintaining history.
@@ -185,7 +185,7 @@ Users own their identity NFT and can transfer it between wallets while maintaini
 ## Flow Summary
 
 1. **Users** create identity tokens with claims
-2. **Protocol** stores identity facts on-chain (data, endorsements, revocations, signals)
+2. **Protocol** stores identity facts on-chain (data, attestations, revocations, signals)
 3. **Verifiers** read protocol data and apply custom trust rules to make decisions
 
 This architecture enables **decentralized identity** while allowing each application to define what "trust" means in their context.

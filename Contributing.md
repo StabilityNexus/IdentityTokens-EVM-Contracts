@@ -102,7 +102,7 @@ git checkout -b feature/short-description
 
 Examples:
 
--   feature/add-endorsement-logic
+-   feature/add-attestation-logic
 -   fix/token-mapping-bug
 -   refactor/storage-optimization
 -   docs/update-natspec
@@ -183,7 +183,7 @@ If your change modifies contracts:
 
 -   Add or update Forge tests.
 -   Test access control.
--   Test endorsement logic.
+-   Test attestation logic.
 -   Test edge cases.
 -   Validate gas usage impact.
 
@@ -253,7 +253,7 @@ Because this is an EVM contract repository:
 -   Use require for validation.
 -   Protect against reentrancy where needed.
 -   Consider multiple identity tokens per user.
--   Validate endorsement mappings carefully.
+-   Validate attestation mappings carefully.
 
 If possible, run Slither locally:
 
@@ -274,7 +274,7 @@ git commit -m "feat: short clear description"
 
 Good examples:
 
--   feat: add endorsement validation check
+-   feat: add attestation validation check
 -   fix: resolve identity mapping overwrite bug
 -   refactor: optimize storage packing
 -   docs: update natspec comments

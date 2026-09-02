@@ -25,7 +25,7 @@ library DataTypes {
         string about;
         uint256 validUntil;
         uint256 createdAt;
-        uint256 totalEndorsementCount;
+        uint256 totalAttestationCount;
         uint256 revokedCount;
         bool isFlagged;
         uint256 flagCount;
@@ -41,9 +41,9 @@ library DataTypes {
         uint256 tokenCount;
     }
 
-    struct Endorsement {
-        uint256 endorserTokenId;
-        address endorserAddress;
+    struct Attestation {
+        uint256 attesterTokenId;
+        address attesterAddress;
         uint256 timestamp;
         uint256 revokedAt;
         uint256 expiresAt;

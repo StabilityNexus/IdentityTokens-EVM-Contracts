@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import { EndorsementModule } from "./modules/EndorsementModule.sol";
+import { AttestationModule } from "./modules/AttestationModule.sol";
 import { FlagModule } from "./modules/FlagModule.sol";
 import { DataTypes } from "./libraries/DataTypes.sol";
 import { Errors } from "./libraries/Errors.sol";
@@ -15,12 +15,12 @@ interface IProfileSystem {
 /**
  * @title IdentitySystem
  * @notice Decentralised identity with soulbound roots, transferable
- *         tokens, time-based endorsements, revocation and flagging.
+ *         tokens, time-based attestations, revocation and flagging.
  *         Inheritance chain:
- *           ERC721 → EndorsementModule → FlagModule
+ *           ERC721 → AttestationModule → FlagModule
  *         All abstract hooks from every module are resolved here.
  */
-contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
+contract IdentitySystem is ERC721, AttestationModule, FlagModule {
     uint256 private _nextTokenId = 1;
 
     // Admin & linked contracts
@@ -110,7 +110,7 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
 
         tokenTypes[tokenId] = DataTypes.TokenType.PROFILE;
 
-        // Initialize a Token struct so endorsement/flagging hooks work seamlessly
+        // Initialize a Token struct so attestation/flagging hooks work seamlessly
         tokens[tokenId] = DataTypes.Token({
             tokenId: tokenId,
             parentRootId: rootId,
@@ -120,7 +120,7 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
             about: "",
             validUntil: 0,
             createdAt: block.timestamp,
-            totalEndorsementCount: 0,
+            totalAttestationCount: 0,
             revokedCount: 0,
             isFlagged: false,
             flagCount: 0,
@@ -167,7 +167,7 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
             about: about,
             validUntil: validUntil,
             createdAt: block.timestamp,
-            totalEndorsementCount: 0,
+            totalAttestationCount: 0,
             revokedCount: 0,
             isFlagged: false,
             flagCount: 0,
@@ -239,7 +239,7 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
         // Remove from root's token list
         _removeFromRootTokenList(rootId, tokenId);
 
-        // Clear token data so burned tokens cannot be endorsed/flagged
+        // Clear token data so burned tokens cannot be attested/flagged
         delete tokens[tokenId];
         delete tokenTypes[tokenId];
 
@@ -271,26 +271,26 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
 
     //  Abstract Hook Implementations
 
-    // Shared (EndorsementModule + FlagModule)
-    function _getCallerRootId() internal view override(EndorsementModule, FlagModule) returns (uint256) {
+    // Shared (AttestationModule + FlagModule)
+    function _getCallerRootId() internal view override(AttestationModule, FlagModule) returns (uint256) {
         return ownerToRootId[msg.sender];
     }
 
-    // EndorsementModule hooks
-    function _requireTokenActive(uint256 id) internal view override(EndorsementModule, FlagModule) {
+    // AttestationModule hooks
+    function _requireTokenActive(uint256 id) internal view override(AttestationModule, FlagModule) {
         if (tokenTypes[id] == DataTypes.TokenType.ROOT) revert Errors.NotToken();
         if (tokens[id].validUntil != 0 && tokens[id].validUntil < block.timestamp) {
             revert Errors.TokenExpired();
         }
     }
 
-    function _requireNotSelfEndorsement(uint256 endorserRootId, uint256 tokenId) internal view override {
+    function _requireNotSelfAttestation(uint256 attesterRootId, uint256 tokenId) internal view override {
         uint256 ownerRootId = ownerToRootId[ownerOf(tokenId)];
-        if (endorserRootId == ownerRootId) revert Errors.CannotEndorseOwnToken();
+        if (attesterRootId == ownerRootId) revert Errors.CannotAttestOwnToken();
     }
 
-    function _incrementTotalEndorsementCount(uint256 tokenId) internal override {
-        tokens[tokenId].totalEndorsementCount++;
+    function _incrementTotalAttestationCount(uint256 tokenId) internal override {
+        tokens[tokenId].totalAttestationCount++;
     }
 
     function _incrementRevokedCount(uint256 tokenId) internal override {
@@ -301,13 +301,13 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
         return tokens[id].validUntil;
     }
 
-    // bridges EndorsementModule and FlagModule
-    function _checkFlaggingThreshold(uint256 tokenId) internal override(EndorsementModule) {
+    // bridges AttestationModule and FlagModule
+    function _checkFlaggingThreshold(uint256 tokenId) internal override(AttestationModule) {
         _checkFlaggingThresholdInternal(tokenId);
     }
 
     // FlagModule shared hook
-    function _countRevokedEndorsements(uint256 tokenId) internal view override(FlagModule) returns (uint256) {
+    function _countRevokedAttestations(uint256 tokenId) internal view override(FlagModule) returns (uint256) {
         return tokens[tokenId].revokedCount;
     }
 
@@ -325,8 +325,8 @@ contract IdentitySystem is ERC721, EndorsementModule, FlagModule {
         tokens[id].isFlagged = flagged;
     }
 
-    function _getTotalEndorsementCount(uint256 id) internal view override returns (uint256) {
-        return tokens[id].totalEndorsementCount;
+    function _getTotalAttestationCount(uint256 id) internal view override returns (uint256) {
+        return tokens[id].totalAttestationCount;
     }
 
     function _requireNotSelfFlag(uint256 callerRootId, uint256 tokenId) internal view override {
