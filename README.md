@@ -50,7 +50,7 @@
 <div align="center">
   <h1> IdentityTokens-EVM-Contracts</h1>
   <p>
-    IdentityTokens-EVM-Contracts is a decentralized identity protocol built on EVM-compatible blockchains that enables individuals to self-issue ERC-721 NFT-based identity tokens with optional metadata such as name, social links, age, nationality, and residence. Users maintain full control over their digital identities and can endorse other identity tokens on-chain, creating a transparent and verifiable web of trust. The system ensures efficient on-chain mappings between tokens, metadata, and endorsement relationships, supporting multiple identity tokens per user while enabling scalable and reliable identity verification.
+    IdentityTokens-EVM-Contracts is a decentralized identity protocol built on EVM-compatible blockchains that enables individuals to self-issue ERC-721 NFT-based identity tokens with optional metadata such as name, social links, age, nationality, and residence. Users maintain full control over their digital identities and can attest other identity tokens on-chain, creating a transparent and verifiable web of trust. The system ensures efficient on-chain mappings between tokens, metadata, and attestation relationships, supporting multiple identity tokens per user while enabling scalable and reliable identity verification.
   </p>
 </div>
 

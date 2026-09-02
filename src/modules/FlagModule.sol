@@ -5,7 +5,7 @@ import { Errors } from "../libraries/Errors.sol";
 import { Events } from "../libraries/Events.sol";
 
 abstract contract FlagModule {
-    uint256 internal constant MIN_ENDORSEMENTS_FOR_AUTO_FLAG = 20;
+    uint256 internal constant MIN_ATTESTATIONS_FOR_AUTO_FLAG = 20;
 
     // Tracks which root identity has already flagged a given token
     mapping(uint256 => mapping(uint256 => bool)) internal _hasRootFlagged;
@@ -31,21 +31,21 @@ abstract contract FlagModule {
         emit Events.TokenFlagged(tokenId, msg.sender, _getFlagCount(tokenId));
     }
 
-    // Auto-Flagging (endorsement revocation threshold)
+    // Auto-Flagging (attestation revocation threshold)
 
     function _checkFlaggingThresholdInternal(uint256 tokenId) internal {
-        uint256 endorsementCount = _getTotalEndorsementCount(tokenId);
+        uint256 attestationCount = _getTotalAttestationCount(tokenId);
 
-        if (endorsementCount >= MIN_ENDORSEMENTS_FOR_AUTO_FLAG && !_autoFlagged[tokenId]) {
-            uint256 revokedCount = _countRevokedEndorsements(tokenId);
+        if (attestationCount >= MIN_ATTESTATIONS_FOR_AUTO_FLAG && !_autoFlagged[tokenId]) {
+            uint256 revokedCount = _countRevokedAttestations(tokenId);
 
-            // Auto-flags if >= 1/3rd of original endorsements are revoked
-            if (revokedCount * 3 >= endorsementCount) {
+            // Auto-flags if >= 1/3rd of original attestations are revoked
+            if (revokedCount * 3 >= attestationCount) {
                 _autoFlagged[tokenId] = true;
                 _incrementFlagCount(tokenId);
                 _setFlagged(tokenId, true);
 
-                emit Events.TokenAutoFlagged(tokenId, "Endorsement revocation threshold exceeded");
+                emit Events.TokenAutoFlagged(tokenId, "Attestation revocation threshold exceeded");
             }
         }
     }
@@ -56,7 +56,7 @@ abstract contract FlagModule {
 
     function _requireTokenActive(uint256 id) internal view virtual;
 
-    function _countRevokedEndorsements(uint256 tokenId) internal view virtual returns (uint256);
+    function _countRevokedAttestations(uint256 tokenId) internal view virtual returns (uint256);
 
     function _incrementFlagCount(uint256 id) internal virtual;
 
@@ -64,7 +64,7 @@ abstract contract FlagModule {
 
     function _setFlagged(uint256 id, bool flagged) internal virtual;
 
-    function _getTotalEndorsementCount(uint256 id) internal view virtual returns (uint256);
+    function _getTotalAttestationCount(uint256 id) internal view virtual returns (uint256);
 
     function _requireNotSelfFlag(uint256 callerRootId, uint256 tokenId) internal view virtual;
 }

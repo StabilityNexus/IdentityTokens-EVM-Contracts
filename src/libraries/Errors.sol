@@ -30,14 +30,14 @@ library Errors {
     error NotToken();
     error TokenExpired();
 
-    // Endorsement
-    error CannotEndorseOwnToken();
-    error AlreadyEndorsed();
-    error NotYourEndorsement();
+    // Attestation
+    error CannotAttestOwnToken();
+    error AlreadyAttested();
+    error NotYourAttestation();
     error AlreadyRevoked();
-    error EndorsementExpired();
+    error AttestationExpired();
     error TokenExpiresTooSoon();
-    error NoActiveEndorsement();
+    error NoActiveAttestation();
 
     // Flag
     error AlreadyFlaggedByRoot();

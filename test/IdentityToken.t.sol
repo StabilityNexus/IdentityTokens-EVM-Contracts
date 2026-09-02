@@ -23,19 +23,19 @@ contract IdentitySystemTest is Test {
     }
 
     /// @dev Helper: creates `count` fresh root identities (starting at `startAddr`)
-    ///      and has each one endorse `tokenId` with the given duration.
-    function _createEndorsers(
+    ///      and has each one attest `tokenId` with the given duration.
+    function _createAttesters(
         uint256 tokenId,
         uint160 startAddr,
         uint256 count,
         uint256 duration
     ) internal returns (uint160 nextAddr) {
         for (uint256 i = 0; i < count; i++) {
-            address endorser = address(startAddr + uint160(i));
-            vm.prank(endorser);
+            address attester = address(startAddr + uint160(i));
+            vm.prank(attester);
             identitySystem.createRootIdentity("");
-            vm.prank(endorser);
-            identitySystem.endorseToken(tokenId, duration);
+            vm.prank(attester);
+            identitySystem.attestToken(tokenId, duration);
         }
         return startAddr + uint160(count);
     }
@@ -103,10 +103,10 @@ contract IdentitySystemTest is Test {
     }
 
     // =========================================================================
-    // Endorsement (time-based validity)
+    // Attestation (time-based validity)
     // =========================================================================
 
-    function test_EndorseToken() public {
+    function test_AttestToken() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -117,22 +117,22 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
-        DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
-        assertEq(endorsements.length, 1);
-        assertEq(endorsements[0].endorserTokenId, 2);
-        assertEq(endorsements[0].expiresAt, block.timestamp + 365 days);
+        DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
+        assertEq(attestations.length, 1);
+        assertEq(attestations[0].attesterTokenId, 2);
+        assertEq(attestations[0].expiresAt, block.timestamp + 365 days);
 
         // Verify cached counter
         (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
 
         // Verify dynamic count
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
     }
 
-    function test_EndorseToken_3YearDuration() public {
+    function test_AttestToken_3YearDuration() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -143,13 +143,13 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 3 * 365 days);
+        identitySystem.attestToken(subId, 3 * 365 days);
 
-        DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
-        assertEq(endorsements[0].expiresAt, block.timestamp + 3 * 365 days);
+        DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
+        assertEq(attestations[0].expiresAt, block.timestamp + 3 * 365 days);
     }
 
-    function test_EndorseToken_CustomDuration_60Days() public {
+    function test_AttestToken_CustomDuration_60Days() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -160,13 +160,13 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 60 days);
+        identitySystem.attestToken(subId, 60 days);
 
-        DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
-        assertEq(endorsements[0].expiresAt, block.timestamp + 60 days);
+        DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
+        assertEq(attestations[0].expiresAt, block.timestamp + 60 days);
     }
 
-    function test_RevertIf_EndorseToken_NoRoot() public {
+    function test_RevertIf_AttestToken_NoRoot() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -175,10 +175,10 @@ contract IdentitySystemTest is Test {
 
         vm.prank(charlie);
         vm.expectRevert(Errors.NoRootIdentity.selector);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
     }
 
-    function test_RevertIf_EndorseToken_SelfEndorsement() public {
+    function test_RevertIf_AttestToken_SelfAttestation() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -186,11 +186,11 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(alice);
-        vm.expectRevert(Errors.CannotEndorseOwnToken.selector);
-        identitySystem.endorseToken(subId, 365 days);
+        vm.expectRevert(Errors.CannotAttestOwnToken.selector);
+        identitySystem.attestToken(subId, 365 days);
     }
 
-    function test_RevertIf_EndorseToken_AlreadyEndorsed() public {
+    function test_RevertIf_AttestToken_AlreadyAttested() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -201,18 +201,18 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         vm.prank(bob);
-        vm.expectRevert(Errors.AlreadyEndorsed.selector);
-        identitySystem.endorseToken(subId, 365 days);
+        vm.expectRevert(Errors.AlreadyAttested.selector);
+        identitySystem.attestToken(subId, 365 days);
     }
 
     // =========================================================================
-    // Endorsement clamping to token validity
+    // Attestation clamping to token validity
     // =========================================================================
 
-    function test_EndorsementClamped_ToTokenValidity() public {
+    function test_AttestationClamped_ToTokenValidity() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -229,38 +229,38 @@ contract IdentitySystemTest is Test {
             block.timestamp + 2 * 365 days
         );
 
-        // Bob endorses for 5 years — should be clamped to 2 years (token validity)
+        // Bob attests for 5 years — should be clamped to 2 years (token validity)
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 5 * 365 days);
+        identitySystem.attestToken(subId, 5 * 365 days);
 
-        DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
-        assertEq(endorsements[0].expiresAt, block.timestamp + 2 * 365 days);
+        DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
+        assertEq(attestations[0].expiresAt, block.timestamp + 2 * 365 days);
     }
 
-    function test_EndorsementClamped_TokenExpiresTooSoon() public {
+    function test_AttestationClamped_TokenExpiresTooSoon() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
 
-        // Token valid for only 5 days — less than MIN_ENDORSEMENT_DURATION
+        // Token valid for only 5 days — less than MIN_ATTESTATION_DURATION
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("Temp", "credential", bytes(""), "", block.timestamp + 5 days);
 
-        // Bob tries to endorse for 30 days — clamping will silently set to 5 days
+        // Bob tries to attest for 30 days — clamping will silently set to 5 days
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 30 days);
+        identitySystem.attestToken(subId, 30 days);
 
-        DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
-        assertEq(endorsements[0].expiresAt, block.timestamp + 5 days);
+        DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
+        assertEq(attestations[0].expiresAt, block.timestamp + 5 days);
     }
 
     // =========================================================================
-    // Endorsement expiry
+    // Attestation expiry
     // =========================================================================
 
-    function test_EndorsementExpires_AfterValidity() public {
+    function test_AttestationExpires_AfterValidity() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -271,24 +271,24 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         // Still active before expiry
-        assertTrue(identitySystem.hasEndorsed(2, subId));
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
+        assertTrue(identitySystem.hasAttested(2, subId));
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
 
         // Warp past the 1-year validity
         vm.warp(block.timestamp + 366 days);
 
-        // Endorsement has expired — lazy evaluation
-        assertFalse(identitySystem.hasEndorsed(2, subId));
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 0);
+        // Attestation has expired — lazy evaluation
+        assertFalse(identitySystem.hasAttested(2, subId));
+        assertEq(identitySystem.getActiveAttestationCount(subId), 0);
 
-        DataTypes.Endorsement[] memory active = identitySystem.getActiveEndorsements(subId);
+        DataTypes.Attestation[] memory active = identitySystem.getActiveAttestations(subId);
         assertEq(active.length, 0);
     }
 
-    function test_ReEndorse_AfterExpiry() public {
+    function test_ReAttest_AfterExpiry() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -298,26 +298,26 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Bob endorses with 1-year validity
+        // Bob attests with 1-year validity
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
 
-        // Bob can re-endorse after expiry
+        // Bob can re-attest after expiry
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 3 * 365 days);
+        identitySystem.attestToken(subId, 3 * 365 days);
 
-        assertTrue(identitySystem.hasEndorsed(2, subId));
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
+        assertTrue(identitySystem.hasAttested(2, subId));
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
 
-        // totalEndorsementCount should still be 1 (same endorser, not inflated)
+        // totalAttestationCount should still be 1 (same attester, not inflated)
         (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
     }
 
-    function test_ReEndorse_AfterRevocation() public {
+    function test_ReAttest_AfterRevocation() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -327,30 +327,30 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Bob endorses
+        // Bob attests
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         // Bob revokes
         vm.prank(bob);
-        identitySystem.revokeEndorsement(subId);
+        identitySystem.revokeAttestation(subId);
 
-        // Bob can re-endorse after revoking
+        // Bob can re-attest after revoking
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 3 * 365 days);
+        identitySystem.attestToken(subId, 3 * 365 days);
 
-        assertTrue(identitySystem.hasEndorsed(2, subId));
+        assertTrue(identitySystem.hasAttested(2, subId));
 
-        // totalEndorsementCount should still be 1 (re-endorsement doesn't inflate)
+        // totalAttestationCount should still be 1 (re-attestation doesn't inflate)
         (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
     }
 
     // =========================================================================
-    // Endorse-revoke loop exploit prevention (Bug #2)
+    // Attest-revoke loop exploit prevention (Bug #2)
     // =========================================================================
 
-    function test_EndorseRevokeLoop_DoesNotInflateTotalCount() public {
+    function test_AttestRevokeLoop_DoesNotInflateTotalCount() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -360,31 +360,31 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Bob does 5 endorse-revoke cycles
+        // Bob does 5 attest-revoke cycles
         for (uint256 i = 0; i < 5; i++) {
             vm.prank(bob);
-            identitySystem.endorseToken(subId, 365 days);
+            identitySystem.attestToken(subId, 365 days);
 
             vm.prank(bob);
-            identitySystem.revokeEndorsement(subId);
+            identitySystem.revokeAttestation(subId);
         }
 
-        // totalEndorsementCount should be 1, not 5 (only counted once per endorser)
+        // totalAttestationCount should be 1, not 5 (only counted once per attester)
         (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
-        // revokedCount should ALSO be 1, not 5 (only counted once per endorser)
+        // revokedCount should ALSO be 1, not 5 (only counted once per attester)
         assertEq(revokedCount, 1);
 
-        // But auto-flag should NOT trigger: totalEndorsementCount=1 < MIN_ENDORSEMENTS_FOR_AUTO_FLAG=20
+        // But auto-flag should NOT trigger: totalAttestationCount=1 < MIN_ATTESTATIONS_FOR_AUTO_FLAG=20
         (, , , , , , , , , , bool isFlagged, , ) = identitySystem.tokens(subId);
         assertFalse(isFlagged);
     }
 
     // =========================================================================
-    // Revocation (no endorsementIndex parameter)
+    // Revocation (no attestationIndex parameter)
     // =========================================================================
 
-    function test_RevokeEndorsement() public {
+    function test_RevokeAttestation() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -395,23 +395,23 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         vm.prank(bob);
-        identitySystem.revokeEndorsement(subId);
+        identitySystem.revokeAttestation(subId);
 
-        DataTypes.Endorsement[] memory endorsements = identitySystem.getEndorsements(subId);
-        assertGt(endorsements[0].revokedAt, 0);
+        DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
+        assertGt(attestations[0].revokedAt, 0);
 
         // Verify cached counters updated
         (, , , , , , , , , uint256 revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(revokedCount, 1);
 
         // Verify dynamic count
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 0);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 0);
     }
 
-    function test_RevertIf_RevokeEndorsement_NoActiveEndorsement() public {
+    function test_RevertIf_RevokeAttestation_NoActiveAttestation() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -421,13 +421,13 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Bob has not endorsed — revoke should fail
+        // Bob has not attested — revoke should fail
         vm.prank(bob);
-        vm.expectRevert(Errors.NoActiveEndorsement.selector);
-        identitySystem.revokeEndorsement(subId);
+        vm.expectRevert(Errors.NoActiveAttestation.selector);
+        identitySystem.revokeAttestation(subId);
     }
 
-    function test_RevertIf_RevokeEndorsement_AlreadyRevoked() public {
+    function test_RevertIf_RevokeAttestation_AlreadyRevoked() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -438,17 +438,17 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         vm.prank(bob);
-        identitySystem.revokeEndorsement(subId);
+        identitySystem.revokeAttestation(subId);
 
         vm.prank(bob);
-        vm.expectRevert(Errors.NoActiveEndorsement.selector);
-        identitySystem.revokeEndorsement(subId);
+        vm.expectRevert(Errors.NoActiveAttestation.selector);
+        identitySystem.revokeAttestation(subId);
     }
 
-    function test_RevertIf_RevokeEndorsement_NonEndorser() public {
+    function test_RevertIf_RevokeAttestation_NonAttester() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -462,15 +462,15 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
-        // Charlie never endorsed — trying to revoke should fail
+        // Charlie never attested — trying to revoke should fail
         vm.prank(charlie);
-        vm.expectRevert(Errors.NoActiveEndorsement.selector);
-        identitySystem.revokeEndorsement(subId);
+        vm.expectRevert(Errors.NoActiveAttestation.selector);
+        identitySystem.revokeAttestation(subId);
     }
 
-    function test_RevertIf_RevokeEndorsement_Expired() public {
+    function test_RevertIf_RevokeAttestation_Expired() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -481,22 +481,22 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
 
-        // Can't revoke an already-expired endorsement
+        // Can't revoke an already-expired attestation
         vm.prank(bob);
-        vm.expectRevert(Errors.EndorsementExpired.selector);
-        identitySystem.revokeEndorsement(subId);
+        vm.expectRevert(Errors.AttestationExpired.selector);
+        identitySystem.revokeAttestation(subId);
     }
 
     // =========================================================================
-    // View functions — endorsements
+    // View functions — attestations
     // =========================================================================
 
-    function test_GetActiveEndorsements() public {
+    function test_GetActiveAttestations() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -507,19 +507,19 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
-        DataTypes.Endorsement[] memory active = identitySystem.getActiveEndorsements(subId);
+        DataTypes.Attestation[] memory active = identitySystem.getActiveAttestations(subId);
         assertEq(active.length, 1);
 
         vm.prank(bob);
-        identitySystem.revokeEndorsement(subId);
+        identitySystem.revokeAttestation(subId);
 
-        active = identitySystem.getActiveEndorsements(subId);
+        active = identitySystem.getActiveAttestations(subId);
         assertEq(active.length, 0);
     }
 
-    function test_GetActiveEndorsementCount() public {
+    function test_GetActiveAttestationCount() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -532,24 +532,24 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Two endorsements
+        // Two attestations
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
         vm.prank(charlie);
-        identitySystem.endorseToken(subId, 3 * 365 days);
+        identitySystem.attestToken(subId, 3 * 365 days);
 
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 2);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 2);
 
-        // Bob's 1-year endorsement expires
+        // Bob's 1-year attestation expires
         vm.warp(block.timestamp + 366 days);
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1); // only Charlie's 3-year remains
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1); // only Charlie's 3-year remains
 
-        // Charlie's 3-year endorsement expires
+        // Charlie's 3-year attestation expires
         vm.warp(block.timestamp + 3 * 365 days);
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 0);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 0);
     }
 
-    function test_GetEndorsementsByEndorser() public {
+    function test_GetAttestationsByAttester() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -560,14 +560,14 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
-        uint256[] memory endorsed = identitySystem.getEndorsementsByEndorser(2);
-        assertEq(endorsed.length, 1);
-        assertEq(endorsed[0], subId);
+        uint256[] memory attested = identitySystem.getAttestationsByAttester(2);
+        assertEq(attested.length, 1);
+        assertEq(attested[0], subId);
     }
 
-    function test_GetEndorsementsByEndorser_ExcludesExpired() public {
+    function test_GetAttestationsByAttester_ExcludesExpired() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -578,16 +578,16 @@ contract IdentitySystemTest is Test {
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
 
-        uint256[] memory endorsed = identitySystem.getEndorsementsByEndorser(2);
-        assertEq(endorsed.length, 0);
+        uint256[] memory attested = identitySystem.getAttestationsByAttester(2);
+        assertEq(attested.length, 0);
     }
 
-    function test_HasEndorsed() public {
+    function test_HasAttested() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -597,16 +597,16 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        assertFalse(identitySystem.hasEndorsed(2, subId));
+        assertFalse(identitySystem.hasAttested(2, subId));
 
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
-        assertTrue(identitySystem.hasEndorsed(2, subId));
+        assertTrue(identitySystem.hasAttested(2, subId));
     }
 
     // =========================================================================
-    // Transfer (controlled) — endorsements persist
+    // Transfer (controlled) — attestations persist
     // =========================================================================
 
     function test_TransferToken() public {
@@ -626,7 +626,7 @@ contract IdentitySystemTest is Test {
         assertEq(history[1], bob);
     }
 
-    function test_TransferToken_PreservesEndorsements() public {
+    function test_TransferToken_PreservesAttestations() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -636,25 +636,25 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Bob endorses with 3-year validity
+        // Bob attests with 3-year validity
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 3 * 365 days);
+        identitySystem.attestToken(subId, 3 * 365 days);
 
-        // Before transfer: 1 active endorsement
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
-        assertTrue(identitySystem.hasEndorsed(2, subId));
+        // Before transfer: 1 active attestation
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
+        assertTrue(identitySystem.hasAttested(2, subId));
 
-        // Transfer — endorsements persist (passport model)
+        // Transfer — attestations persist (passport model)
         vm.prank(alice);
         identitySystem.transferToken(subId, charlie);
 
-        // After transfer: endorsement still active
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
-        assertTrue(identitySystem.hasEndorsed(2, subId));
+        // After transfer: attestation still active
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
+        assertTrue(identitySystem.hasAttested(2, subId));
 
-        DataTypes.Endorsement[] memory active = identitySystem.getActiveEndorsements(subId);
+        DataTypes.Attestation[] memory active = identitySystem.getActiveAttestations(subId);
         assertEq(active.length, 1);
-        assertEq(active[0].endorserTokenId, 2);
+        assertEq(active[0].attesterTokenId, 2);
     }
 
     function test_RevertIf_TransferToken_NotHolder() public {
@@ -748,7 +748,7 @@ contract IdentitySystemTest is Test {
         identitySystem.burnToken(subId);
     }
 
-    function test_BurnedTokenCannotBeEndorsed() public {
+    function test_BurnedTokenCannotBeAttested() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -763,7 +763,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotToken.selector);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
     }
 
     function test_BurnToken_RemovesFromWalletList() public {
@@ -900,14 +900,14 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // 21 endorsements from 21 different users — exceeds MIN_ENDORSEMENTS_FOR_AUTO_FLAG (20)
-        _createEndorsers(subId, 100, 21, 365 days);
+        // 21 attestations from 21 different users — exceeds MIN_ATTESTATIONS_FOR_AUTO_FLAG (20)
+        _createAttesters(subId, 100, 21, 365 days);
 
-        // Revoke 7 of the 21 endorsements → 7*3 = 21 >= 21 → triggers auto-flag
+        // Revoke 7 of the 21 attestations → 7*3 = 21 >= 21 → triggers auto-flag
         for (uint256 i = 0; i < 7; i++) {
-            address endorser = address(uint160(100 + i));
-            vm.prank(endorser);
-            identitySystem.revokeEndorsement(subId);
+            address attester = address(uint160(100 + i));
+            vm.prank(attester);
+            identitySystem.revokeAttestation(subId);
         }
 
         (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.tokens(subId);
@@ -915,21 +915,21 @@ contract IdentitySystemTest is Test {
         assertEq(flagCount, 1);
     }
 
-    function test_AutoFlag_DoesNotTrigger_BelowMinEndorsements() public {
+    function test_AutoFlag_DoesNotTrigger_BelowMinAttestations() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Only 3 endorsements — below the MIN_ENDORSEMENTS_FOR_AUTO_FLAG (20)
-        _createEndorsers(subId, 200, 3, 365 days);
+        // Only 3 attestations — below the MIN_ATTESTATIONS_FOR_AUTO_FLAG (20)
+        _createAttesters(subId, 200, 3, 365 days);
 
         // Revoke all 3 — would exceed 1/3 threshold, but floor blocks it
         for (uint256 i = 0; i < 3; i++) {
-            address endorser = address(uint160(200 + i));
-            vm.prank(endorser);
-            identitySystem.revokeEndorsement(subId);
+            address attester = address(uint160(200 + i));
+            vm.prank(attester);
+            identitySystem.revokeAttestation(subId);
         }
 
         (, , , , , , , , , , bool isFlagged, , ) = identitySystem.tokens(subId);
@@ -1083,8 +1083,8 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // 20 endorsements from 20 different users (meets minimum floor)
-        _createEndorsers(subId, 300, 20, 365 days);
+        // 20 attestations from 20 different users (meets minimum floor)
+        _createAttesters(subId, 300, 20, 365 days);
 
         // Charlie manually flags (flagCount = 1, isFlagged = false)
         vm.prank(charlie);
@@ -1096,9 +1096,9 @@ contract IdentitySystemTest is Test {
 
         // Revoke 7 of 20 → 7*3 = 21 >= 20 → auto-flag triggers (flagCount = 2, isFlagged = true)
         for (uint256 i = 0; i < 7; i++) {
-            address endorser = address(uint160(300 + i));
-            vm.prank(endorser);
-            identitySystem.revokeEndorsement(subId);
+            address attester = address(uint160(300 + i));
+            vm.prank(attester);
+            identitySystem.revokeAttestation(subId);
         }
 
         (, , , , , , , , , , bool isFlaggedAfter, uint256 flagCountAfter, ) = identitySystem.tokens(subId);
@@ -1110,7 +1110,7 @@ contract IdentitySystemTest is Test {
     // Cached counter verification
     // =========================================================================
 
-    function test_CachedCounters_TrackEndorsementsAccurately() public {
+    function test_CachedCounters_TrackAttestationsAccurately() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -1123,32 +1123,32 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        // Bob endorses
+        // Bob attests
         vm.prank(bob);
-        identitySystem.endorseToken(subId, 365 days);
+        identitySystem.attestToken(subId, 365 days);
 
         (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 1);
         assertEq(revokedCount, 0);
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
 
-        // Charlie endorses
+        // Charlie attests
         vm.prank(charlie);
-        identitySystem.endorseToken(subId, 3 * 365 days);
+        identitySystem.attestToken(subId, 3 * 365 days);
 
         (, , , , , , , , totalCount, revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 2);
         assertEq(revokedCount, 0);
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 2);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 2);
 
         // Bob revokes
         vm.prank(bob);
-        identitySystem.revokeEndorsement(subId);
+        identitySystem.revokeAttestation(subId);
 
         (, , , , , , , , totalCount, revokedCount, , , ) = identitySystem.tokens(subId);
         assertEq(totalCount, 2);
         assertEq(revokedCount, 1);
-        assertEq(identitySystem.getActiveEndorsementCount(subId), 1);
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
     }
 
     // =========================================================================
@@ -1486,7 +1486,7 @@ contract IdentitySystemTest is Test {
         profileSystem.createProfile(meta);
     }
 
-    function test_ProfileEndorsement() public {
+    function test_ProfileAttestation() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
 
@@ -1509,12 +1509,12 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(meta);
 
-        // Bob can endorse Alice's profile token
+        // Bob can attest Alice's profile token
         vm.prank(bob);
-        identitySystem.endorseToken(profileId, 365 days);
+        identitySystem.attestToken(profileId, 365 days);
 
-        assertEq(identitySystem.getActiveEndorsementCount(profileId), 1);
-        assertTrue(identitySystem.hasEndorsed(2, profileId));
+        assertEq(identitySystem.getActiveAttestationCount(profileId), 1);
+        assertTrue(identitySystem.hasAttested(2, profileId));
     }
 
     function test_ProfileFlagging() public {

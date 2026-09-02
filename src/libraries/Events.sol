@@ -15,10 +15,10 @@ library Events {
 
     event TokenBurned(uint256 indexed tokenId, uint256 indexed rootId);
 
-    //  Endorsement
-    event EndorsementGiven(uint256 indexed endorserRootId, uint256 indexed tokenId, uint256 expiresAt);
+    //  Attestation
+    event AttestationGiven(uint256 indexed attesterRootId, uint256 indexed tokenId, uint256 expiresAt);
 
-    event EndorsementRevoked(uint256 indexed endorserRootId, uint256 indexed tokenId, uint256 endorsementIndex);
+    event AttestationRevoked(uint256 indexed attesterRootId, uint256 indexed tokenId, uint256 attestationIndex);
 
     //  Flag
     event TokenFlagged(uint256 indexed tokenId, address indexed flagger, uint256 flagCount);
