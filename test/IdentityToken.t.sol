@@ -1177,7 +1177,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice Nakamoto",
             username: "alice",
-            age: 25,
             nationality: "US",
             github: "https://github.com/alice",
             email: "alice@example.com",
@@ -1204,7 +1203,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1227,7 +1225,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1249,7 +1246,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "ab",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1275,7 +1271,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "abcdefghijklmnopqrstuvwxyz0123456789",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1297,7 +1292,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice!",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1322,7 +1316,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1350,7 +1343,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1381,7 +1373,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory metaAlice = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1394,7 +1385,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory metaBob = DataTypes.ProfileMetadata({
             name: "Bob",
             username: "bob_x",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1423,7 +1413,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1455,7 +1444,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1496,7 +1484,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1527,7 +1514,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1555,7 +1541,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice Nakamoto",
             username: "alice",
-            age: 25,
             nationality: "US",
             github: "https://github.com/alice",
             email: "alice@example.com",
@@ -1571,7 +1556,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
         assertEq(stored.name, "Alice Nakamoto");
         assertEq(stored.username, "alice");
-        assertEq(stored.age, 25);
         assertEq(stored.nationality, "US");
         assertEq(stored.github, "https://github.com/alice");
         assertEq(stored.email, "alice@example.com");

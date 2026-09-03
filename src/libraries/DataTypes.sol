@@ -52,7 +52,6 @@ library DataTypes {
     struct ProfileMetadata {
         string name;
         string username;
-        uint256 age;
         string nationality;
         string github;
         string email;
