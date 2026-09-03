@@ -92,8 +92,8 @@ The smart contracts are currently deployed on the Ethereum **Sepolia Testnet**:
 
 | Smart Contract     | Contract Address                             | Sepolia Etherscan Link                                                                               |
 | ------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **IdentitySystem** | `0xe886929760A5B8E47Cb42679512C920Fd1b14431` | [View on Etherscan](https://sepolia.etherscan.io/address/0xe886929760A5B8E47Cb42679512C920Fd1b14431) |
-| **ProfileSystem**  | `0xDf36b4Cc1fB9d65CB371e0ee88EB9e4b4A30E423` | [View on Etherscan](https://sepolia.etherscan.io/address/0xDf36b4Cc1fB9d65CB371e0ee88EB9e4b4A30E423) |
+| **IdentitySystem** | `0xB0E21B4901DD434A2e49C983529eB7094bf4D978` | [View on Etherscan](https://sepolia.etherscan.io/address/0xB0E21B4901DD434A2e49C983529eB7094bf4D978) |
+| **ProfileSystem**  | `0xDc9058F434299c619Dc6f885F850ee133327DA4e` | [View on Etherscan](https://sepolia.etherscan.io/address/0xDc9058F434299c619Dc6f885F850ee133327DA4e) |
 
 ---
 
