@@ -376,6 +376,14 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         return walletTokens[wallet];
     }
 
+    function getProfileTokenId(address wallet) public view returns (uint256) {
+        uint256[] storage ids = walletTokens[wallet];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (tokenTypes[ids[i]] == DataTypes.TokenType.PROFILE) return ids[i];
+        }
+        return 0;
+    }
+
     function getTransferHistory(uint256 tokenId) external view returns (address[] memory) {
         return transferHistory[tokenId];
     }
