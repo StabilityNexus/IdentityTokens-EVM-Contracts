@@ -1177,7 +1177,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice Nakamoto",
             username: "alice",
-            age: 25,
             nationality: "US",
             github: "https://github.com/alice",
             email: "alice@example.com",
@@ -1204,7 +1203,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1227,7 +1225,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1249,7 +1246,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "ab",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1275,7 +1271,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "abcdefghijklmnopqrstuvwxyz0123456789",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1297,7 +1292,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice!",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1322,7 +1316,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1350,7 +1343,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1381,7 +1373,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory metaAlice = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1394,7 +1385,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory metaBob = DataTypes.ProfileMetadata({
             name: "Bob",
             username: "bob_x",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1423,7 +1413,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1455,7 +1444,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1496,7 +1484,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1527,7 +1514,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",
             username: "alice",
-            age: 0,
             nationality: "",
             github: "",
             email: "",
@@ -1555,7 +1541,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice Nakamoto",
             username: "alice",
-            age: 25,
             nationality: "US",
             github: "https://github.com/alice",
             email: "alice@example.com",
@@ -1571,7 +1556,6 @@ contract IdentitySystemTest is Test {
         DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
         assertEq(stored.name, "Alice Nakamoto");
         assertEq(stored.username, "alice");
-        assertEq(stored.age, 25);
         assertEq(stored.nationality, "US");
         assertEq(stored.github, "https://github.com/alice");
         assertEq(stored.email, "alice@example.com");
@@ -1579,5 +1563,214 @@ contract IdentitySystemTest is Test {
         assertEq(stored.xDotCom, "@alice");
         assertEq(stored.websitePortfolioLink, "https://alice.dev");
         assertEq(stored.ens, "alice.eth");
+    }
+
+    // =========================================================================
+    // Attestation Views (paging + attester detail)
+    // =========================================================================
+
+    function _attestedToken(uint256 count) internal returns (uint256 tokenId) {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        tokenId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _createAttesters(tokenId, uint160(0x100), count, 365 days);
+    }
+
+    function test_GetAttestationsPaged() public {
+        uint256 tokenId = _attestedToken(5);
+
+        (DataTypes.Attestation[] memory page, uint256 total) = identitySystem.getAttestationsPaged(tokenId, 1, 2);
+
+        assertEq(total, 5);
+        assertEq(page.length, 2);
+        assertEq(page[0].attesterAddress, address(uint160(0x101)));
+        assertEq(page[1].attesterAddress, address(uint160(0x102)));
+    }
+
+    function test_GetAttestationsPaged_TailPageIsShort() public {
+        uint256 tokenId = _attestedToken(5);
+
+        (DataTypes.Attestation[] memory page, uint256 total) = identitySystem.getAttestationsPaged(tokenId, 3, 10);
+
+        assertEq(total, 5);
+        assertEq(page.length, 2);
+    }
+
+    function test_GetAttestationsPaged_HugeLimitDoesNotOverflow() public {
+        uint256 tokenId = _attestedToken(3);
+
+        (DataTypes.Attestation[] memory page, uint256 total) = identitySystem.getAttestationsPaged(
+            tokenId,
+            0,
+            type(uint256).max
+        );
+
+        assertEq(total, 3);
+        assertEq(page.length, 3);
+    }
+
+    function test_GetAttestationsPaged_OffsetPastEndReturnsEmpty() public {
+        uint256 tokenId = _attestedToken(2);
+
+        (DataTypes.Attestation[] memory page, uint256 total) = identitySystem.getAttestationsPaged(tokenId, 9, 5);
+
+        assertEq(total, 2);
+        assertEq(page.length, 0);
+    }
+
+    function test_GetAttestersDetailed_ResolvesRootIdentity() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 tokenId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob The Attester");
+        vm.prank(bob);
+        identitySystem.attestToken(tokenId, 365 days);
+
+        (DataTypes.AttesterView[] memory page, uint256 total) = identitySystem.getAttestersDetailed(
+            tokenId,
+            true,
+            0,
+            10
+        );
+
+        assertEq(total, 1);
+        assertEq(page[0].wallet, bob);
+        assertEq(page[0].displayName, "Bob The Attester");
+        assertEq(page[0].rootId, identitySystem.ownerToRootId(bob));
+        assertEq(page[0].profileTokenId, 0);
+        assertEq(page[0].expiresAt, block.timestamp + 365 days);
+        assertEq(page[0].revokedAt, 0);
+    }
+
+    function test_GetAttestersDetailed_ResolvesProfileTokenId() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 tokenId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Bob",
+            username: "bob",
+            nationality: "US",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+        vm.prank(bob);
+        uint256 bobProfileId = profileSystem.createProfile(meta);
+
+        vm.prank(bob);
+        identitySystem.attestToken(tokenId, 365 days);
+
+        (DataTypes.AttesterView[] memory page, ) = identitySystem.getAttestersDetailed(tokenId, true, 0, 10);
+
+        assertEq(page[0].profileTokenId, bobProfileId);
+    }
+
+    function test_GetAttestersDetailed_ActiveOnlyExcludesRevoked() public {
+        uint256 tokenId = _attestedToken(3);
+
+        address revoker = address(uint160(0x100));
+        vm.prank(revoker);
+        identitySystem.revokeAttestation(tokenId);
+
+        (, uint256 activeTotal) = identitySystem.getAttestersDetailed(tokenId, true, 0, 10);
+        (DataTypes.AttesterView[] memory allPage, uint256 allTotal) = identitySystem.getAttestersDetailed(
+            tokenId,
+            false,
+            0,
+            10
+        );
+
+        assertEq(activeTotal, 2);
+        assertEq(allTotal, 3);
+        assertEq(allPage[0].wallet, revoker);
+        assertTrue(allPage[0].revokedAt > 0);
+    }
+
+    function test_GetAttestersDetailed_ActiveOnlyExcludesExpired() public {
+        uint256 tokenId = _attestedToken(2);
+
+        vm.warp(block.timestamp + 366 days);
+
+        (, uint256 activeTotal) = identitySystem.getAttestersDetailed(tokenId, true, 0, 10);
+        (, uint256 allTotal) = identitySystem.getAttestersDetailed(tokenId, false, 0, 10);
+
+        assertEq(activeTotal, 0);
+        assertEq(allTotal, 2);
+    }
+
+    function test_GetAttestersDetailed_PagesOverFilteredSet() public {
+        uint256 tokenId = _attestedToken(4);
+
+        vm.prank(address(uint160(0x100)));
+        identitySystem.revokeAttestation(tokenId);
+
+        (DataTypes.AttesterView[] memory page, uint256 total) = identitySystem.getAttestersDetailed(
+            tokenId,
+            true,
+            0,
+            2
+        );
+
+        assertEq(total, 3);
+        assertEq(page.length, 2);
+        assertEq(page[0].wallet, address(uint160(0x101)));
+        assertEq(page[1].wallet, address(uint160(0x102)));
+    }
+
+    function test_GetAttestersDetailed_OffsetPastEndReturnsEmpty() public {
+        uint256 tokenId = _attestedToken(2);
+
+        (DataTypes.AttesterView[] memory page, uint256 total) = identitySystem.getAttestersDetailed(
+            tokenId,
+            true,
+            5,
+            10
+        );
+
+        assertEq(total, 2);
+        assertEq(page.length, 0);
+    }
+
+    function test_GetProfileTokenId() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        assertEq(identitySystem.getProfileTokenId(alice), 0);
+
+        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
+            name: "Alice",
+            username: "alice",
+            nationality: "US",
+            github: "",
+            email: "",
+            discord: "",
+            xDotCom: "",
+            websitePortfolioLink: "",
+            ens: ""
+        });
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta);
+
+        assertEq(identitySystem.getProfileTokenId(alice), profileId);
+    }
+
+    function test_GetProfileTokenId_IgnoresRootAndSubTokens() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        assertEq(identitySystem.getProfileTokenId(alice), 0);
     }
 }

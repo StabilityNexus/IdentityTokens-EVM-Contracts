@@ -376,6 +376,52 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         return walletTokens[wallet];
     }
 
+    function getAttestersDetailed(
+        uint256 tokenId,
+        bool activeOnly,
+        uint256 offset,
+        uint256 limit
+    ) external view returns (DataTypes.AttesterView[] memory page, uint256 total) {
+        DataTypes.Attestation[] storage all = _attestations[tokenId];
+
+        for (uint256 i = 0; i < all.length; i++) {
+            if (!activeOnly || _isAttestationActive(all[i])) total++;
+        }
+
+        if (offset >= total || limit == 0) return (new DataTypes.AttesterView[](0), total);
+
+        uint256 remaining = total - offset;
+        uint256 size = limit < remaining ? limit : remaining;
+        page = new DataTypes.AttesterView[](size);
+
+        uint256 seen = 0;
+        uint256 filled = 0;
+        for (uint256 i = 0; i < all.length && filled < size; i++) {
+            DataTypes.Attestation storage attestation = all[i];
+            if (activeOnly && !_isAttestationActive(attestation)) continue;
+            if (seen++ < offset) continue;
+
+            DataTypes.RootIdentity storage root = rootIdentities[attestation.attesterTokenId];
+            page[filled++] = DataTypes.AttesterView({
+                rootId: attestation.attesterTokenId,
+                wallet: root.walletAddress,
+                displayName: root.displayName,
+                profileTokenId: getProfileTokenId(root.walletAddress),
+                timestamp: attestation.timestamp,
+                revokedAt: attestation.revokedAt,
+                expiresAt: attestation.expiresAt
+            });
+        }
+    }
+
+    function getProfileTokenId(address wallet) public view returns (uint256) {
+        uint256[] storage ids = walletTokens[wallet];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (tokenTypes[ids[i]] == DataTypes.TokenType.PROFILE) return ids[i];
+        }
+        return 0;
+    }
+
     function getTransferHistory(uint256 tokenId) external view returns (address[] memory) {
         return transferHistory[tokenId];
     }
