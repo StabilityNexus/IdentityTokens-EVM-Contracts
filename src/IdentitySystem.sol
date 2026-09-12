@@ -402,15 +402,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
             if (seen++ < offset) continue;
 
             DataTypes.RootIdentity storage root = rootIdentities[attestation.attesterTokenId];
-            page[filled++] = DataTypes.AttesterView({
-                rootId: attestation.attesterTokenId,
-                wallet: root.walletAddress,
-                displayName: root.displayName,
-                profileTokenId: getProfileTokenId(root.walletAddress),
-                timestamp: attestation.timestamp,
-                revokedAt: attestation.revokedAt,
-                expiresAt: attestation.expiresAt
-            });
+            page[filled++] = DataTypes.AttesterView({ attestation: attestation, displayName: root.displayName });
         }
     }
 

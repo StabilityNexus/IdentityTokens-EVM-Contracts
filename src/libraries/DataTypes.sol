@@ -50,13 +50,8 @@ library DataTypes {
     }
 
     struct AttesterView {
-        uint256 rootId;
-        address wallet;
+        Attestation attestation;
         string displayName;
-        uint256 profileTokenId;
-        uint256 timestamp;
-        uint256 revokedAt;
-        uint256 expiresAt;
     }
 
     struct ProfileMetadata {

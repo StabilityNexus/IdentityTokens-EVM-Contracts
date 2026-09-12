@@ -1638,15 +1638,17 @@ contract IdentitySystemTest is Test {
         );
 
         assertEq(total, 1);
-        assertEq(page[0].wallet, bob);
+        assertEq(page[0].attestation.attesterAddress, bob);
         assertEq(page[0].displayName, "Bob The Attester");
-        assertEq(page[0].rootId, identitySystem.ownerToRootId(bob));
-        assertEq(page[0].profileTokenId, 0);
-        assertEq(page[0].expiresAt, block.timestamp + 365 days);
-        assertEq(page[0].revokedAt, 0);
+        assertEq(page[0].attestation.attesterTokenId, identitySystem.ownerToRootId(bob));
+        assertEq(page[0].attestation.expiresAt, block.timestamp + 365 days);
+        assertEq(page[0].attestation.revokedAt, 0);
     }
 
-    function test_GetAttestersDetailed_ResolvesProfileTokenId() public {
+    /// @dev A profile is optional and separate from attesting. Whether the
+    ///      attester holds one must make no difference to what this view
+    ///      returns -- the name shown is always the root display name.
+    function test_GetAttestersDetailed_IgnoresAttesterProfile() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
         vm.prank(alice);
@@ -1655,7 +1657,7 @@ contract IdentitySystemTest is Test {
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Bob",
+            name: "Bob Profile Name",
             username: "bob",
             nationality: "US",
             github: "",
@@ -1666,14 +1668,15 @@ contract IdentitySystemTest is Test {
             ens: ""
         });
         vm.prank(bob);
-        uint256 bobProfileId = profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta);
 
         vm.prank(bob);
         identitySystem.attestToken(tokenId, 365 days);
 
         (DataTypes.AttesterView[] memory page, ) = identitySystem.getAttestersDetailed(tokenId, true, 0, 10);
 
-        assertEq(page[0].profileTokenId, bobProfileId);
+        assertEq(page[0].displayName, "Bob");
+        assertEq(page[0].attestation.attesterAddress, bob);
     }
 
     function test_GetAttestersDetailed_ActiveOnlyExcludesRevoked() public {
@@ -1693,8 +1696,8 @@ contract IdentitySystemTest is Test {
 
         assertEq(activeTotal, 2);
         assertEq(allTotal, 3);
-        assertEq(allPage[0].wallet, revoker);
-        assertTrue(allPage[0].revokedAt > 0);
+        assertEq(allPage[0].attestation.attesterAddress, revoker);
+        assertTrue(allPage[0].attestation.revokedAt > 0);
     }
 
     function test_GetAttestersDetailed_ActiveOnlyExcludesExpired() public {
@@ -1724,8 +1727,8 @@ contract IdentitySystemTest is Test {
 
         assertEq(total, 3);
         assertEq(page.length, 2);
-        assertEq(page[0].wallet, address(uint160(0x101)));
-        assertEq(page[1].wallet, address(uint160(0x102)));
+        assertEq(page[0].attestation.attesterAddress, address(uint160(0x101)));
+        assertEq(page[1].attestation.attesterAddress, address(uint160(0x102)));
     }
 
     function test_GetAttestersDetailed_OffsetPastEndReturnsEmpty() public {
@@ -1740,6 +1743,39 @@ contract IdentitySystemTest is Test {
 
         assertEq(total, 2);
         assertEq(page.length, 0);
+    }
+
+    /// @dev The attesters list has to carry enough to open an attester's wallet
+    ///      view: the address it returns must resolve to that wallet's own
+    ///      tokens and root identity, without touching their profile.
+    function test_GetAttestersDetailed_WalletResolvesToAttestersOwnTokens() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 aliceToken = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        vm.prank(bob);
+        identitySystem.createRootIdentity("John");
+        vm.prank(bob);
+        uint256 bobToken = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
+        vm.prank(bob);
+        identitySystem.attestToken(aliceToken, 365 days);
+
+        (DataTypes.AttesterView[] memory page, ) = identitySystem.getAttestersDetailed(aliceToken, true, 0, 10);
+
+        address attesterWallet = page[0].attestation.attesterAddress;
+        assertEq(attesterWallet, bob);
+        assertEq(page[0].displayName, "John");
+
+        uint256[] memory attesterTokens = identitySystem.getWalletTokens(attesterWallet);
+        assertEq(attesterTokens.length, 1);
+        assertEq(attesterTokens[0], bobToken);
+
+        DataTypes.RootIdentityView memory root = identitySystem.getRootIdentityView(
+            identitySystem.ownerToRootId(attesterWallet)
+        );
+        assertEq(root.displayName, "John");
+        assertEq(root.walletAddress, bob);
     }
 
     function test_GetProfileTokenId() public {
