@@ -49,10 +49,14 @@ library DataTypes {
         uint256 expiresAt;
     }
 
+    struct AttesterView {
+        Attestation attestation;
+        string displayName;
+    }
+
     struct ProfileMetadata {
         string name;
         string username;
-        uint256 age;
         string nationality;
         string github;
         string email;

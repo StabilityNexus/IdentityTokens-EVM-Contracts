@@ -38,7 +38,7 @@ abstract contract AttestationModule {
             DataTypes.Attestation storage prev = _attestations[tokenId][
                 _activeAttestationIndex[attesterRootId][tokenId]
             ];
-            if (prev.revokedAt == 0 && prev.expiresAt > block.timestamp) revert Errors.AlreadyAttested();
+            if (_isAttestationActive(prev)) revert Errors.AlreadyAttested();
         }
 
         uint256 expiresAt = block.timestamp + duration;
@@ -114,7 +114,7 @@ abstract contract AttestationModule {
 
         uint256 activeCount = 0;
         for (uint256 i = 0; i < all.length; i++) {
-            if (all[i].revokedAt == 0 && all[i].expiresAt > block.timestamp) {
+            if (_isAttestationActive(all[i])) {
                 activeCount++;
             }
         }
@@ -122,7 +122,7 @@ abstract contract AttestationModule {
         DataTypes.Attestation[] memory result = new DataTypes.Attestation[](activeCount);
         uint256 j = 0;
         for (uint256 i = 0; i < all.length; i++) {
-            if (all[i].revokedAt == 0 && all[i].expiresAt > block.timestamp) {
+            if (_isAttestationActive(all[i])) {
                 result[j++] = all[i];
             }
         }
@@ -133,7 +133,7 @@ abstract contract AttestationModule {
         DataTypes.Attestation[] storage all = _attestations[tokenId];
         uint256 activeCount = 0;
         for (uint256 i = 0; i < all.length; i++) {
-            if (all[i].revokedAt == 0 && all[i].expiresAt > block.timestamp) {
+            if (_isAttestationActive(all[i])) {
                 activeCount++;
             }
         }
@@ -148,7 +148,7 @@ abstract contract AttestationModule {
             uint256 subId = allIds[i];
             if (_hasActiveAttestation[attesterRootId][subId]) {
                 DataTypes.Attestation storage e = _attestations[subId][_activeAttestationIndex[attesterRootId][subId]];
-                if (e.revokedAt == 0 && e.expiresAt > block.timestamp) {
+                if (_isAttestationActive(e)) {
                     count++;
                 }
             }
@@ -160,17 +160,42 @@ abstract contract AttestationModule {
             uint256 subId = allIds[i];
             if (_hasActiveAttestation[attesterRootId][subId]) {
                 DataTypes.Attestation storage e = _attestations[subId][_activeAttestationIndex[attesterRootId][subId]];
-                if (e.revokedAt == 0 && e.expiresAt > block.timestamp) {
+                if (_isAttestationActive(e)) {
                     tokenIds[j++] = allIds[i];
                 }
             }
         }
     }
 
+    function getAttestationsPaged(
+        uint256 tokenId,
+        uint256 offset,
+        uint256 limit
+    ) external view returns (DataTypes.Attestation[] memory page, uint256 total) {
+        DataTypes.Attestation[] storage all = _attestations[tokenId];
+        total = all.length;
+
+        if (offset >= total || limit == 0) return (new DataTypes.Attestation[](0), total);
+
+        uint256 remaining = total - offset;
+        uint256 size = limit < remaining ? limit : remaining;
+
+        page = new DataTypes.Attestation[](size);
+        for (uint256 i = 0; i < size; i++) {
+            page[i] = all[offset + i];
+        }
+    }
+
     function hasAttested(uint256 attesterRootId, uint256 tokenId) external view returns (bool) {
         if (!_hasActiveAttestation[attesterRootId][tokenId]) return false;
         DataTypes.Attestation storage e = _attestations[tokenId][_activeAttestationIndex[attesterRootId][tokenId]];
-        return e.revokedAt == 0 && e.expiresAt > block.timestamp;
+        return _isAttestationActive(e);
+    }
+
+    // Internal Helpers
+
+    function _isAttestationActive(DataTypes.Attestation storage attestation) internal view returns (bool) {
+        return attestation.revokedAt == 0 && attestation.expiresAt > block.timestamp;
     }
 
     // Abstract Hooks
