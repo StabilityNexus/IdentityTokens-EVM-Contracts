@@ -64,5 +64,36 @@ library DataTypes {
         string xDotCom;
         string websitePortfolioLink;
         string ens;
+        string avatarId;
+    }
+
+    // Editable profile fields. USERNAME is deliberately absent: usernames are permanent.
+    enum ProfileField {
+        NAME,
+        NATIONALITY,
+        GITHUB,
+        EMAIL,
+        DISCORD,
+        X_DOT_COM,
+        WEBSITE,
+        ENS,
+        AVATAR
+    }
+
+    struct FieldUpdate {
+        ProfileField field;
+        string value;
+    }
+
+    struct ProfileLink {
+        string label;
+        string url;
+    }
+
+    // Writes one fixed link slot; an empty url clears the slot.
+    struct LinkUpdate {
+        uint8 slot;
+        string label;
+        string url;
     }
 }

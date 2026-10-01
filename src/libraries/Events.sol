@@ -8,6 +8,8 @@ library Events {
     //  Profile
     event ProfileCreated(uint256 indexed tokenId, address indexed owner, string username);
 
+    event ProfileUpdated(uint256 indexed tokenId);
+
     //  Token
     event TokenCreated(uint256 indexed tokenId, uint256 indexed rootId, string tokenName, string tokenType);
 

@@ -40,6 +40,63 @@ contract IdentitySystemTest is Test {
         return startAddr + uint160(count);
     }
 
+    /// @dev Helper: an empty link list for createProfile / updateProfile.
+    function _noLinks() internal pure returns (DataTypes.LinkUpdate[] memory) {
+        return new DataTypes.LinkUpdate[](0);
+    }
+
+    /// @dev Helper: an empty field list for updateProfile.
+    function _noFields() internal pure returns (DataTypes.FieldUpdate[] memory) {
+        return new DataTypes.FieldUpdate[](0);
+    }
+
+    /// @dev Helper: a single-field update list.
+    function _field(
+        DataTypes.ProfileField field,
+        string memory value
+    ) internal pure returns (DataTypes.FieldUpdate[] memory fields) {
+        fields = new DataTypes.FieldUpdate[](1);
+        fields[0] = DataTypes.FieldUpdate(field, value);
+    }
+
+    /// @dev Helper: a single-slot link update list.
+    function _link(
+        uint8 slot,
+        string memory label,
+        string memory url
+    ) internal pure returns (DataTypes.LinkUpdate[] memory links) {
+        links = new DataTypes.LinkUpdate[](1);
+        links[0] = DataTypes.LinkUpdate(slot, label, url);
+    }
+
+    /// @dev Helper: profile metadata with only name and username set.
+    function _meta(
+        string memory name,
+        string memory username
+    ) internal pure returns (DataTypes.ProfileMetadata memory) {
+        return
+            DataTypes.ProfileMetadata({
+                name: name,
+                username: username,
+                nationality: "",
+                github: "",
+                email: "",
+                discord: "",
+                xDotCom: "",
+                websitePortfolioLink: "",
+                ens: "",
+                avatarId: ""
+            });
+    }
+
+    /// @dev Helper: gives `user` a root identity and a minimal profile; returns the profile token id.
+    function _createProfile(address user, string memory username) internal returns (uint256) {
+        vm.prank(user);
+        identitySystem.createRootIdentity(username);
+        vm.prank(user);
+        return profileSystem.createProfile(_meta(username, username), _noLinks());
+    }
+
     // =========================================================================
     // Root Identity
     // =========================================================================
@@ -1246,11 +1303,12 @@ contract IdentitySystemTest is Test {
             discord: "alice#1234",
             xDotCom: "@alice",
             websitePortfolioLink: "https://alice.dev",
-            ens: "alice.eth"
+            ens: "alice.eth",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         assertEq(identitySystem.ownerOf(profileId), alice);
         assertEq(uint8(identitySystem.tokenTypes(profileId)), uint8(DataTypes.TokenType.PROFILE));
@@ -1272,11 +1330,12 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         assertEq(identitySystem.ownerOf(profileId), alice);
     }
@@ -1294,12 +1353,13 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileNameRequired.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     function test_RevertIf_CreateProfile_UsernameTooShort() public {
@@ -1315,12 +1375,13 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileUsernameTooShort.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     // =========================================================================
@@ -1340,12 +1401,13 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileUsernameTooLong.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     function test_RevertIf_CreateProfile_InvalidUsernameChar() public {
@@ -1361,12 +1423,13 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
         vm.expectRevert(Errors.InvalidProfileUsernameChar.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     function test_RevertIf_CreateProfile_UsernameTaken() public {
@@ -1385,18 +1448,19 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
 
         meta.name = "Bob";
         // same username "alice"
 
         vm.prank(bob);
         vm.expectRevert(Errors.ProfileUsernameTaken.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     function test_RevertIf_CreateProfile_AlreadyMinted() public {
@@ -1412,17 +1476,18 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
 
         meta.username = "alice2";
 
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     function test_ProfileTransfer_PreventsRecipientDuplicateProfile() public {
@@ -1442,7 +1507,8 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         DataTypes.ProfileMetadata memory metaBob = DataTypes.ProfileMetadata({
@@ -1454,14 +1520,15 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 aliceProfileId = profileSystem.createProfile(metaAlice);
+        uint256 aliceProfileId = profileSystem.createProfile(metaAlice, _noLinks());
 
         vm.prank(bob);
-        uint256 bobProfileId = profileSystem.createProfile(metaBob);
+        uint256 bobProfileId = profileSystem.createProfile(metaBob, _noLinks());
 
         // Alice tries to transfer her profile to Bob who already has one
         vm.prank(alice);
@@ -1482,11 +1549,12 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         // Transfer to bob (who has no profile)
         vm.prank(alice);
@@ -1513,11 +1581,12 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         // Transfer away
         vm.prank(alice);
@@ -1528,13 +1597,13 @@ contract IdentitySystemTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
 
         // Bob tries to mint a profile — should be blocked because he already holds one
         meta.username = "bob";
         vm.prank(bob);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
     }
 
     function test_ProfileAttestation() public {
@@ -1553,11 +1622,12 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         // Bob can attest Alice's profile token
         vm.prank(bob);
@@ -1583,11 +1653,12 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         // Bob can flag Alice's profile token
         vm.prank(bob);
@@ -1610,11 +1681,12 @@ contract IdentitySystemTest is Test {
             discord: "alice#1234",
             xDotCom: "@alice",
             websitePortfolioLink: "https://alice.dev",
-            ens: "alice.eth"
+            ens: "alice.eth",
+            avatarId: "a07"
         });
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
         assertEq(stored.name, "Alice Nakamoto");
@@ -1626,6 +1698,266 @@ contract IdentitySystemTest is Test {
         assertEq(stored.xDotCom, "@alice");
         assertEq(stored.websitePortfolioLink, "https://alice.dev");
         assertEq(stored.ens, "alice.eth");
+        assertEq(stored.avatarId, "a07");
+    }
+
+    // =========================================================================
+    // Profile Editing (per-field and per-link-slot updates)
+    // =========================================================================
+
+    function test_CreateProfile_WithLinks() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
+        links[0] = DataTypes.LinkUpdate(0, "Farcaster", "https://warpcast.com/alice");
+        links[1] = DataTypes.LinkUpdate(3, "Blog", "https://alice.blog");
+
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), links);
+
+        DataTypes.ProfileLink[6] memory stored = profileSystem.getLinks(profileId);
+        assertEq(stored[0].label, "Farcaster");
+        assertEq(stored[0].url, "https://warpcast.com/alice");
+        assertEq(stored[3].label, "Blog");
+        assertEq(stored[3].url, "https://alice.blog");
+        assertEq(stored[1].url, "");
+        assertEq(stored[5].url, "");
+    }
+
+    function test_UpdateProfile_SingleField() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.ProfileMetadata memory meta = _meta("Alice", "alice");
+        meta.github = "https://github.com/alice";
+        meta.discord = "alice#1234";
+        meta.ens = "alice.eth";
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
+
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.DISCORD, "alice_new"), _noLinks());
+
+        DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
+        assertEq(stored.discord, "alice_new");
+        assertEq(stored.name, "Alice");
+        assertEq(stored.username, "alice");
+        assertEq(stored.github, "https://github.com/alice");
+        assertEq(stored.ens, "alice.eth");
+    }
+
+    function test_UpdateProfile_MultipleFieldsAndLinks() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(
+            _meta("Alice", "alice"),
+            _link(0, "Farcaster", "https://warpcast.com/alice")
+        );
+
+        DataTypes.FieldUpdate[] memory fields = new DataTypes.FieldUpdate[](3);
+        fields[0] = DataTypes.FieldUpdate(DataTypes.ProfileField.NAME, "Alice Nakamoto");
+        fields[1] = DataTypes.FieldUpdate(DataTypes.ProfileField.NATIONALITY, "JP");
+        fields[2] = DataTypes.FieldUpdate(DataTypes.ProfileField.X_DOT_COM, "alice");
+
+        DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
+        links[0] = DataTypes.LinkUpdate(0, "Warpcast", "https://warpcast.com/alice.eth");
+        links[1] = DataTypes.LinkUpdate(5, "Blog", "https://alice.blog");
+
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, fields, links);
+
+        DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
+        assertEq(stored.name, "Alice Nakamoto");
+        assertEq(stored.nationality, "JP");
+        assertEq(stored.xDotCom, "alice");
+
+        DataTypes.ProfileLink[6] memory storedLinks = profileSystem.getLinks(profileId);
+        assertEq(storedLinks[0].label, "Warpcast");
+        assertEq(storedLinks[0].url, "https://warpcast.com/alice.eth");
+        assertEq(storedLinks[5].label, "Blog");
+        assertEq(storedLinks[5].url, "https://alice.blog");
+    }
+
+    function test_UpdateProfile_Avatar() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.AVATAR, "a03"), _noLinks());
+
+        assertEq(profileSystem.getProfile(profileId).avatarId, "a03");
+    }
+
+    function test_UpdateProfile_ClearLinkSlot() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](3);
+        links[0] = DataTypes.LinkUpdate(0, "One", "https://one.dev");
+        links[1] = DataTypes.LinkUpdate(1, "Two", "https://two.dev");
+        links[2] = DataTypes.LinkUpdate(2, "Three", "https://three.dev");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), links);
+
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), _link(1, "", ""));
+
+        DataTypes.ProfileLink[6] memory stored = profileSystem.getLinks(profileId);
+        assertEq(stored[1].label, "");
+        assertEq(stored[1].url, "");
+        assertEq(stored[0].url, "https://one.dev");
+        assertEq(stored[2].url, "https://three.dev");
+    }
+
+    function test_UpdateProfile_EmitsEvent() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.expectEmit(true, false, false, true);
+        emit Events.ProfileUpdated(profileId);
+
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.GITHUB, "alice"), _noLinks());
+    }
+
+    function test_UpdateProfile_UsernameUnchanged() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        // Touch every editable field; none of them may affect the username
+        DataTypes.FieldUpdate[] memory fields = new DataTypes.FieldUpdate[](9);
+        for (uint8 i = 0; i < 9; i++) {
+            fields[i] = DataTypes.FieldUpdate(DataTypes.ProfileField(i), "changed");
+        }
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, fields, _noLinks());
+
+        assertEq(profileSystem.getProfile(profileId).username, "alice");
+        assertEq(profileSystem.getProfile(profileId).name, "changed");
+        assertTrue(profileSystem.usernameTaken("alice"));
+        assertEq(profileSystem.usernameToProfileTokenId("alice"), profileId);
+    }
+
+    function test_UpdateProfile_AfterTransfer() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(alice);
+        identitySystem.transferToken(profileId, bob);
+
+        vm.prank(bob);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, "Bob"), _noLinks());
+        assertEq(profileSystem.getProfile(profileId).name, "Bob");
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.NotProfileOwner.selector);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, "Alice"), _noLinks());
+    }
+
+    function test_BurnProfile_ClearsLinks() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(
+            _meta("Alice", "alice"),
+            _link(2, "Blog", "https://alice.blog")
+        );
+
+        vm.prank(alice);
+        identitySystem.burnToken(profileId);
+
+        DataTypes.ProfileLink[6] memory stored = profileSystem.getLinks(profileId);
+        assertEq(stored[2].label, "");
+        assertEq(stored[2].url, "");
+        assertEq(profileSystem.getProfile(profileId).username, "");
+        assertFalse(profileSystem.usernameTaken("alice"));
+    }
+
+    function test_RevertIf_UpdateProfile_NotOwner() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.NotProfileOwner.selector);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, "Mallory"), _noLinks());
+    }
+
+    function test_RevertIf_UpdateProfile_EmptyName() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileNameRequired.selector);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, ""), _noLinks());
+    }
+
+    function test_RevertIf_UpdateProfile_InvalidLinkSlot() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.InvalidLinkSlot.selector);
+        profileSystem.updateProfile(profileId, _noFields(), _link(6, "Blog", "https://alice.blog"));
+    }
+
+    function test_RevertIf_CreateProfile_InvalidLinkSlot() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.InvalidLinkSlot.selector);
+        profileSystem.createProfile(_meta("Alice", "alice"), _link(6, "Blog", "https://alice.blog"));
+    }
+
+    function test_RevertIf_UpdateProfile_Empty() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.EmptyProfileUpdate.selector);
+        profileSystem.updateProfile(profileId, _noFields(), _noLinks());
+    }
+
+    function test_RevertIf_UpdateProfile_NoProfile() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        // A SUB token the caller owns is not a profile
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileNotFound.selector);
+        profileSystem.updateProfile(subId, _field(DataTypes.ProfileField.NAME, "Alice"), _noLinks());
+
+        // Neither is a token id that was never minted
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileNotFound.selector);
+        profileSystem.updateProfile(999, _field(DataTypes.ProfileField.NAME, "Alice"), _noLinks());
+    }
+
+    function test_RevertIf_UpdateProfile_BurnedProfile() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        vm.prank(alice);
+        identitySystem.burnToken(profileId);
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.ProfileNotFound.selector);
+        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, "Alice"), _noLinks());
+    }
+
+    /// @dev Same ABI shape as DataTypes.FieldUpdate, but lets the test send an out-of-range enum value.
+    struct RawFieldUpdate {
+        uint8 field;
+        string value;
+    }
+
+    function test_RevertIf_UpdateProfile_InvalidField() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        RawFieldUpdate[] memory fields = new RawFieldUpdate[](1);
+        fields[0] = RawFieldUpdate(9, "username-takeover"); // one past ProfileField.AVATAR
+
+        vm.prank(alice);
+        (bool ok, ) = address(profileSystem).call(
+            abi.encodeWithSelector(ProfileSystem.updateProfile.selector, profileId, fields, _noLinks())
+        );
+        assertFalse(ok);
+        assertEq(profileSystem.getProfile(profileId).username, "alice");
     }
 
     // =========================================================================
@@ -1728,10 +2060,11 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
         vm.prank(bob);
-        profileSystem.createProfile(meta);
+        profileSystem.createProfile(meta, _noLinks());
 
         vm.prank(bob);
         identitySystem.attestToken(tokenId, 365 days);
@@ -1856,10 +2189,11 @@ contract IdentitySystemTest is Test {
             discord: "",
             xDotCom: "",
             websitePortfolioLink: "",
-            ens: ""
+            ens: "",
+            avatarId: ""
         });
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta);
+        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         assertEq(identitySystem.getProfileTokenId(alice), profileId);
     }
