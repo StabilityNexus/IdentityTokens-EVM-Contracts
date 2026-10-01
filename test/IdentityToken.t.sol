@@ -860,6 +860,69 @@ contract IdentitySystemTest is Test {
         assertEq(rootView.tokenCount, 0);
     }
 
+    function test_HasAttested_FalseAfterBurn() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        uint256 bobRootId = identitySystem.ownerToRootId(bob);
+
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        vm.prank(bob);
+        identitySystem.attestToken(subId, 365 days);
+        assertTrue(identitySystem.hasAttested(bobRootId, subId));
+
+        vm.prank(alice);
+        identitySystem.burnToken(subId);
+
+        assertFalse(identitySystem.hasAttested(bobRootId, subId));
+    }
+
+    function test_GetAttestationsByAttester_SkipsBurned() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        uint256 bobRootId = identitySystem.ownerToRootId(bob);
+
+        vm.prank(alice);
+        uint256 keptId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        vm.prank(alice);
+        uint256 burnedId = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
+
+        vm.prank(bob);
+        identitySystem.attestToken(keptId, 365 days);
+        vm.prank(bob);
+        identitySystem.attestToken(burnedId, 365 days);
+
+        vm.prank(alice);
+        identitySystem.burnToken(burnedId);
+
+        uint256[] memory attested = identitySystem.getAttestationsByAttester(bobRootId);
+        assertEq(attested.length, 1);
+        assertEq(attested[0], keptId);
+    }
+
+    function test_RevertIf_RevokeAttestation_BurnedToken() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        vm.prank(bob);
+        identitySystem.attestToken(subId, 365 days);
+
+        vm.prank(alice);
+        identitySystem.burnToken(subId);
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.revokeAttestation(subId);
+    }
+
     // =========================================================================
     // View functions — root & wallet
     // =========================================================================
