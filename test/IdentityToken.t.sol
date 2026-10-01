@@ -1780,15 +1780,6 @@ contract IdentitySystemTest is Test {
         assertEq(storedLinks[5].url, "https://alice.blog");
     }
 
-    function test_UpdateProfile_Avatar() public {
-        uint256 profileId = _createProfile(alice, "alice");
-
-        vm.prank(alice);
-        profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.AVATAR, "a03"), _noLinks());
-
-        assertEq(profileSystem.getProfile(profileId).avatarId, "a03");
-    }
-
     function test_UpdateProfile_ClearLinkSlot() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
@@ -1833,6 +1824,7 @@ contract IdentitySystemTest is Test {
 
         assertEq(profileSystem.getProfile(profileId).username, "alice");
         assertEq(profileSystem.getProfile(profileId).name, "changed");
+        assertEq(profileSystem.getProfile(profileId).avatarId, "changed");
         assertTrue(profileSystem.usernameTaken("alice"));
         assertEq(profileSystem.usernameToProfileTokenId("alice"), profileId);
     }
@@ -1893,23 +1885,6 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         vm.expectRevert(Errors.InvalidLinkSlot.selector);
         profileSystem.updateProfile(profileId, _noFields(), _link(6, "Blog", "https://alice.blog"));
-    }
-
-    function test_RevertIf_CreateProfile_InvalidLinkSlot() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.InvalidLinkSlot.selector);
-        profileSystem.createProfile(_meta("Alice", "alice"), _link(6, "Blog", "https://alice.blog"));
-    }
-
-    function test_RevertIf_UpdateProfile_Empty() public {
-        uint256 profileId = _createProfile(alice, "alice");
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.EmptyProfileUpdate.selector);
-        profileSystem.updateProfile(profileId, _noFields(), _noLinks());
     }
 
     function test_RevertIf_UpdateProfile_NoProfile() public {

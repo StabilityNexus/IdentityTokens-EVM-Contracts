@@ -28,7 +28,6 @@ library Errors {
     error NotProfileOwner();
     error ProfileNotFound();
     error InvalidLinkSlot();
-    error EmptyProfileUpdate();
 
     // Token
     error NotToken();

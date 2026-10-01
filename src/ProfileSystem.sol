@@ -21,7 +21,7 @@ contract ProfileSystem {
     mapping(string => uint256) public usernameToProfileTokenId;
 
     // Custom links live in fixed slots so editing one link rewrites only that slot
-    uint8 public constant MAX_LINKS = 6;
+    uint8 internal constant MAX_LINKS = 6;
     mapping(uint256 => DataTypes.ProfileLink[MAX_LINKS]) internal _links;
 
     // Constructor
@@ -90,7 +90,6 @@ contract ProfileSystem {
         // Every profile has a username, so an empty one means burned, never created, or not a profile token
         if (bytes(profile.username).length == 0) revert Errors.ProfileNotFound();
         if (identitySystem.ownerOf(tokenId) != msg.sender) revert Errors.NotProfileOwner();
-        if (fields.length == 0 && links.length == 0) revert Errors.EmptyProfileUpdate();
 
         for (uint256 i = 0; i < fields.length; i++) {
             _setField(profile, fields[i].field, fields[i].value);
