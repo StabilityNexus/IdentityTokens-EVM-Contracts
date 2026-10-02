@@ -26,7 +26,7 @@ IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockc
   - [`script/HelperConfig.s.sol`](/contracts/script/HelperConfig.s.sol): Environment and network configuration helper.
 
 - **`test/` — Automated Test Suite**
-  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 109 unit, integration, and fuzz tests covering all contract flows and edge cases.
+  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 107 unit, integration, and fuzz tests covering all contract flows and edge cases.
 
 - **`docs/` — System Workflows**
   - [`docs/WORKFLOWS.md`](/contracts/docs/WORKFLOWS.md): Visual and structural workflow guides.

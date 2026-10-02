@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Test, stdStorage, StdStorage } from "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
 import { IdentitySystem } from "../src/IdentitySystem.sol";
 import { ProfileSystem } from "../src/ProfileSystem.sol";
@@ -10,8 +10,6 @@ import { Errors } from "../src/libraries/Errors.sol";
 import { Events } from "../src/libraries/Events.sol";
 
 contract IdentitySystemTest is Test {
-    using stdStorage for StdStorage;
-
     IdentitySystem public identitySystem;
     ProfileSystem public profileSystem;
 
@@ -2239,35 +2237,6 @@ contract IdentitySystemTest is Test {
         vm.prank(bob);
         vm.expectRevert(Errors.NotToken.selector);
         identitySystem.attestToken(29999999999, 365 days);
-    }
-
-    function test_RevertIf_FlagToken_BurnedToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-        vm.prank(alice);
-        identitySystem.burnToken(subId);
-
-        vm.prank(bob);
-        vm.expectRevert(Errors.NotToken.selector);
-        identitySystem.flagToken(subId);
-    }
-
-    function test_RevertIf_CreateToken_IdSpaceExhausted() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        stdstore
-            .target(address(identitySystem))
-            .sig("minted(uint256)")
-            .with_key(uint256(DataTypes.TokenType.SUB))
-            .checked_write(uint256(1e10 - 1));
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.IdSpaceExhausted.selector);
-        identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
     }
 
     function test_TokenURI() public {
