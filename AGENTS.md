@@ -12,7 +12,8 @@ IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockc
 ### Core Architecture & Directory Map
 
 - **`src/` — Core Smart Contracts**
-  - [`src/IdentitySystem.sol`](/contracts/src/IdentitySystem.sol): Core contract inheriting `ERC721`, [`AttestationModule`](/contracts/src/modules/AttestationModule.sol), and [`FlagModule`](/contracts/src/modules/FlagModule.sol). Manages soulbound root identities, sub-token issuance, transfer permissions, wallet/root token indexing, and integration with `ProfileSystem`.
+  - [`src/IdentitySystem.sol`](/contracts/src/IdentitySystem.sol): Core contract inheriting `ERC721`, [`AttestationModule`](/contracts/src/modules/AttestationModule.sol), and [`FlagModule`](/contracts/src/modules/FlagModule.sol). Manages soulbound root identities, sub-token issuance, transfer permissions, wallet/root token indexing, on-chain `tokenURI` labels, and integration with `ProfileSystem`.
+    - **Token IDs:** each type has its own counter (`minted[TokenType]`). `id = (type + 1) * 1e10 + (serial * MIX + type * SALT) % 1e10`, so `tokenTypeOf(id)` decodes the type with no storage, and `formatTokenId(id)` gives the UI form `id-`/`tk-`/`pf-` + 10 digits (e.g. `29321932540` → `tk-9321932540`). The frontend mirrors this in `dit/lib/tokenId.ts`.
   - [`src/ProfileSystem.sol`](/contracts/src/ProfileSystem.sol): Standalone system for profile metadata management, username registration/validation (`a-z`, `0-9`, `.`, `_`), profile metadata mapping (`DataTypes.ProfileMetadata`), per-field and per-link-slot edits via `updateProfile` (username is permanent), 6 fixed custom-link slots (`getLinks`), and username/metadata/link release upon token burn.
   - [`src/modules/AttestationModule.sol`](/contracts/src/modules/AttestationModule.sol): Abstract module handling time-bound peer attestations (up to 3 years max), attestation clamping based on token expiration, active attestation queries, and revocations.
   - [`src/modules/FlagModule.sol`](/contracts/src/modules/FlagModule.sol): Abstract module managing manual flagging by root identities and automated flagging on revocation (auto-flags once when a token has at least 20 lifetime attesters and at least 1/3 of them have revoked; manual flags only increment `flagCount`).
@@ -25,7 +26,7 @@ IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockc
   - [`script/HelperConfig.s.sol`](/contracts/script/HelperConfig.s.sol): Environment and network configuration helper.
 
 - **`test/` — Automated Test Suite**
-  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 102 unit, integration, and fuzz tests covering all contract flows and edge cases.
+  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 109 unit, integration, and fuzz tests covering all contract flows and edge cases.
 
 - **`docs/` — System Workflows**
   - [`docs/WORKFLOWS.md`](/contracts/docs/WORKFLOWS.md): Visual and structural workflow guides.
@@ -176,7 +177,7 @@ PROFILE_SYSTEM_ADDRESS=0x...          # Address of deployed ProfileSystem contra
 
 ### Naming Conventions
 - **Contracts / Libraries / Interfaces**: PascalCase (e.g. `IdentitySystem`, `ProfileSystem`, `DataTypes`)
-- **Internal / Private Variables & Functions**: Leading underscore `_` (e.g. `_nextTokenId`, `_internalTransferActive`, `_validateUsername`)
+- **Internal / Private Variables & Functions**: Leading underscore `_` (e.g. `_nextId`, `_internalTransferActive`, `_validateUsername`)
 - **Public / External Functions & Storage Mappings**: camelCase (e.g. `createRootIdentity`, `ownerToRootId`)
 - **Enums & Structs**: PascalCase types (`TokenType`, `ProfileMetadata`); UPPERCASE enum values (`ROOT`, `SUB`, `PROFILE`)
 - **Custom Errors**: PascalCase error names starting with action or condition (e.g. `AlreadyHasRoot`, `ProfileUsernameTaken`, `RootNonTransferable`)

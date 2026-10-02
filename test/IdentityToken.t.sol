@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Test } from "forge-std/Test.sol";
+import { Test, stdStorage, StdStorage } from "forge-std/Test.sol";
+import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
 import { IdentitySystem } from "../src/IdentitySystem.sol";
 import { ProfileSystem } from "../src/ProfileSystem.sol";
 import { DataTypes } from "../src/libraries/DataTypes.sol";
@@ -9,6 +10,8 @@ import { Errors } from "../src/libraries/Errors.sol";
 import { Events } from "../src/libraries/Events.sol";
 
 contract IdentitySystemTest is Test {
+    using stdStorage for StdStorage;
+
     IdentitySystem public identitySystem;
     ProfileSystem public profileSystem;
 
@@ -105,17 +108,17 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 rootId = identitySystem.createRootIdentity("Alice Nakamoto");
 
-        assertEq(rootId, 1);
-        assertEq(identitySystem.ownerOf(1), alice);
-        assertEq(identitySystem.ownerToRootId(alice), 1);
-        assertEq(uint8(identitySystem.tokenTypes(1)), uint8(DataTypes.TokenType.ROOT));
+        assertEq(rootId, 16180339887); // first root: id-6180339887
+        assertEq(identitySystem.ownerOf(rootId), alice);
+        assertEq(identitySystem.ownerToRootId(alice), rootId);
+        assertEq(uint8(identitySystem.tokenTypeOf(rootId)), uint8(DataTypes.TokenType.ROOT));
     }
 
     function test_CreateRootIdentity_WithEmptyDisplayName() public {
         vm.prank(alice);
         uint256 rootId = identitySystem.createRootIdentity("");
 
-        assertEq(rootId, 1);
+        assertEq(identitySystem.ownerOf(rootId), alice);
     }
 
     function test_RevertIf_CreateRootIdentity_AlreadyHasRoot() public {
@@ -144,13 +147,13 @@ contract IdentitySystemTest is Test {
             0
         );
 
-        assertEq(subId, 2);
-        assertEq(identitySystem.ownerOf(2), alice);
-        assertEq(uint8(identitySystem.tokenTypes(2)), uint8(DataTypes.TokenType.SUB));
+        assertEq(subId, 29321932540); // first token: tk-9321932540
+        assertEq(identitySystem.ownerOf(subId), alice);
+        assertEq(uint8(identitySystem.tokenTypeOf(subId)), uint8(DataTypes.TokenType.SUB));
 
-        uint256[] memory subIds = identitySystem.getTokensForRoot(1);
+        uint256[] memory subIds = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
         assertEq(subIds.length, 1);
-        assertEq(subIds[0], 2);
+        assertEq(subIds[0], subId);
     }
 
     function test_RevertIf_CreateToken_NoRoot() public {
@@ -178,7 +181,7 @@ contract IdentitySystemTest is Test {
 
         DataTypes.Attestation[] memory attestations = identitySystem.getAttestations(subId);
         assertEq(attestations.length, 1);
-        assertEq(attestations[0].attesterTokenId, 2);
+        assertEq(attestations[0].attesterTokenId, identitySystem.ownerToRootId(bob));
         assertEq(attestations[0].expiresAt, block.timestamp + 365 days);
 
         // Verify cached counter
@@ -331,14 +334,14 @@ contract IdentitySystemTest is Test {
         identitySystem.attestToken(subId, 365 days);
 
         // Still active before expiry
-        assertTrue(identitySystem.hasAttested(2, subId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
 
         // Warp past the 1-year validity
         vm.warp(block.timestamp + 366 days);
 
         // Attestation has expired — lazy evaluation
-        assertFalse(identitySystem.hasAttested(2, subId));
+        assertFalse(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
         assertEq(identitySystem.getActiveAttestationCount(subId), 0);
 
         DataTypes.Attestation[] memory active = identitySystem.getActiveAttestations(subId);
@@ -366,7 +369,7 @@ contract IdentitySystemTest is Test {
         vm.prank(bob);
         identitySystem.attestToken(subId, 3 * 365 days);
 
-        assertTrue(identitySystem.hasAttested(2, subId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
 
         // totalAttestationCount should still be 1 (same attester, not inflated)
@@ -396,7 +399,7 @@ contract IdentitySystemTest is Test {
         vm.prank(bob);
         identitySystem.attestToken(subId, 3 * 365 days);
 
-        assertTrue(identitySystem.hasAttested(2, subId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
         // totalAttestationCount should still be 1 (re-attestation doesn't inflate)
         (, , , , , , , , uint256 totalCount, , , , ) = identitySystem.tokens(subId);
@@ -619,7 +622,7 @@ contract IdentitySystemTest is Test {
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
 
-        uint256[] memory attested = identitySystem.getAttestationsByAttester(2);
+        uint256[] memory attested = identitySystem.getAttestationsByAttester(identitySystem.ownerToRootId(bob));
         assertEq(attested.length, 1);
         assertEq(attested[0], subId);
     }
@@ -640,7 +643,7 @@ contract IdentitySystemTest is Test {
         // Warp past expiry
         vm.warp(block.timestamp + 366 days);
 
-        uint256[] memory attested = identitySystem.getAttestationsByAttester(2);
+        uint256[] memory attested = identitySystem.getAttestationsByAttester(identitySystem.ownerToRootId(bob));
         assertEq(attested.length, 0);
     }
 
@@ -654,12 +657,12 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
-        assertFalse(identitySystem.hasAttested(2, subId));
+        assertFalse(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
 
-        assertTrue(identitySystem.hasAttested(2, subId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
     }
 
     // =========================================================================
@@ -699,7 +702,7 @@ contract IdentitySystemTest is Test {
 
         // Before transfer: 1 active attestation
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
-        assertTrue(identitySystem.hasAttested(2, subId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
         // Transfer — attestations persist (passport model)
         vm.prank(alice);
@@ -707,11 +710,11 @@ contract IdentitySystemTest is Test {
 
         // After transfer: attestation still active
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
-        assertTrue(identitySystem.hasAttested(2, subId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
         DataTypes.Attestation[] memory active = identitySystem.getActiveAttestations(subId);
         assertEq(active.length, 1);
-        assertEq(active[0].attesterTokenId, 2);
+        assertEq(active[0].attesterTokenId, identitySystem.ownerToRootId(bob));
     }
 
     function test_RevertIf_TransferToken_NotHolder() public {
@@ -793,13 +796,13 @@ contract IdentitySystemTest is Test {
 
     function test_BurnToken_EmitsEvent() public {
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        uint256 rootId = identitySystem.createRootIdentity("Alice");
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         vm.expectEmit(true, true, false, true);
-        emit Events.TokenBurned(subId, 1);
+        emit Events.TokenBurned(subId, rootId);
 
         vm.prank(alice);
         identitySystem.burnToken(subId);
@@ -886,17 +889,19 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         uint256 subId2 = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
 
-        uint256[] memory subsBefore = identitySystem.getTokensForRoot(1);
+        uint256[] memory subsBefore = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
         assertEq(subsBefore.length, 2);
 
         vm.prank(alice);
         identitySystem.burnToken(subId1);
 
-        uint256[] memory subsAfter = identitySystem.getTokensForRoot(1);
+        uint256[] memory subsAfter = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
         assertEq(subsAfter.length, 1);
         assertEq(subsAfter[0], subId2);
 
-        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(1);
+        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
+            identitySystem.ownerToRootId(alice)
+        );
         assertEq(rootView.tokenCount, 1);
     }
 
@@ -910,10 +915,12 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         identitySystem.burnToken(subId);
 
-        uint256[] memory subsAfter = identitySystem.getTokensForRoot(1);
+        uint256[] memory subsAfter = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
         assertEq(subsAfter.length, 0);
 
-        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(1);
+        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
+            identitySystem.ownerToRootId(alice)
+        );
         assertEq(rootView.tokenCount, 0);
     }
 
@@ -988,9 +995,11 @@ contract IdentitySystemTest is Test {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice Nakamoto");
 
-        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(1);
+        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
+            identitySystem.ownerToRootId(alice)
+        );
 
-        assertEq(rootView.tokenId, 1);
+        assertEq(rootView.tokenId, identitySystem.ownerToRootId(alice));
         assertEq(rootView.walletAddress, alice);
         assertEq(rootView.displayName, "Alice Nakamoto");
         assertTrue(rootView.isActive);
@@ -1311,7 +1320,7 @@ contract IdentitySystemTest is Test {
         uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         assertEq(identitySystem.ownerOf(profileId), alice);
-        assertEq(uint8(identitySystem.tokenTypes(profileId)), uint8(DataTypes.TokenType.PROFILE));
+        assertEq(uint8(identitySystem.tokenTypeOf(profileId)), uint8(DataTypes.TokenType.PROFILE));
         assertTrue(identitySystem.hasProfile(alice));
         assertTrue(profileSystem.usernameTaken("alice"));
         assertTrue(profileSystem.hasMintedProfile(alice));
@@ -1634,7 +1643,7 @@ contract IdentitySystemTest is Test {
         identitySystem.attestToken(profileId, 365 days);
 
         assertEq(identitySystem.getActiveAttestationCount(profileId), 1);
-        assertTrue(identitySystem.hasAttested(2, profileId));
+        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), profileId));
     }
 
     function test_ProfileFlagging() public {
@@ -2180,5 +2189,100 @@ contract IdentitySystemTest is Test {
         identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
 
         assertEq(identitySystem.getProfileTokenId(alice), 0);
+    }
+
+    // =========================================================================
+    // Token IDs
+    // =========================================================================
+
+    // Pinned values: dit/lib/tokenId.ts mirrors this formula and checks the same ids
+    function test_TokenIds_PerTypeSerials() public {
+        uint256 profileId = _createProfile(alice, "alice");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        vm.prank(bob);
+        uint256 bobRootId = identitySystem.createRootIdentity("Bob");
+
+        assertEq(identitySystem.ownerToRootId(alice), 16180339887);
+        assertEq(bobRootId, 12360679774);
+        assertEq(subId, 29321932540);
+        assertEq(profileId, 32463525193);
+        assertEq(identitySystem.minted(uint256(DataTypes.TokenType.ROOT)), 2);
+        assertEq(identitySystem.minted(uint256(DataTypes.TokenType.SUB)), 1);
+        assertEq(identitySystem.minted(uint256(DataTypes.TokenType.PROFILE)), 1);
+    }
+
+    function test_FormatTokenId() public view {
+        assertEq(identitySystem.formatTokenId(16180339887), "id-6180339887");
+        assertEq(identitySystem.formatTokenId(10901699435), "id-0901699435");
+        assertEq(identitySystem.formatTokenId(29321932540), "tk-9321932540");
+        assertEq(identitySystem.formatTokenId(32463525193), "pf-2463525193");
+    }
+
+    function test_RevertIf_TokenTypeOf_InvalidId() public {
+        vm.expectRevert(Errors.InvalidTokenId.selector);
+        identitySystem.tokenTypeOf(0);
+        vm.expectRevert(Errors.InvalidTokenId.selector);
+        identitySystem.tokenTypeOf(5);
+        vm.expectRevert(Errors.InvalidTokenId.selector);
+        identitySystem.tokenTypeOf(4e10);
+    }
+
+    function test_RevertIf_AttestToken_UnknownId() public {
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.attestToken(5, 365 days);
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.attestToken(29999999999, 365 days);
+    }
+
+    function test_RevertIf_FlagToken_BurnedToken() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        vm.prank(alice);
+        identitySystem.burnToken(subId);
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.NotToken.selector);
+        identitySystem.flagToken(subId);
+    }
+
+    function test_RevertIf_CreateToken_IdSpaceExhausted() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        stdstore
+            .target(address(identitySystem))
+            .sig("minted(uint256)")
+            .with_key(uint256(DataTypes.TokenType.SUB))
+            .checked_write(uint256(1e10 - 1));
+
+        vm.prank(alice);
+        vm.expectRevert(Errors.IdSpaceExhausted.selector);
+        identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+    }
+
+    function test_TokenURI() public {
+        uint256 profileId = _createProfile(alice, "alice");
+        string memory json = '{"name":"DIT Profile pf-2463525193"}';
+        assertEq(
+            identitySystem.tokenURI(profileId),
+            string.concat("data:application/json;base64,", Base64.encode(bytes(json)))
+        );
+        assertEq(
+            identitySystem.tokenURI(identitySystem.ownerToRootId(alice)),
+            string.concat(
+                "data:application/json;base64,",
+                Base64.encode(bytes('{"name":"DIT Root Identity id-6180339887"}'))
+            )
+        );
     }
 }
