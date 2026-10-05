@@ -7,25 +7,25 @@ This repository contains smart contracts powering the **IdentityTokens-EVM** pro
 ## 1. Project Overview & Architecture
 
 ### Purpose
-IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockchains. It allows users to self-issue soulbound root identity tokens and non-soulbound/transferable identity and profile tokens (ERC-721 based DIT tokens) with customizable metadata (name, username, age, nationality, social links). The protocol features peer attestation with time clamping and revocation, trust flagging with auto-flag thresholds, and username-based profile resolution.
+IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockchains. It allows users to self-issue soulbound root identity tokens and non-soulbound/transferable identity and profile tokens (ERC-721 based DIT tokens) with customizable, editable metadata (name, username, nationality, social links, avatar, up to 6 custom links). The protocol features peer attestation with time clamping and revocation, trust flagging with auto-flag thresholds, and username-based profile resolution.
 
 ### Core Architecture & Directory Map
 
 - **`src/` — Core Smart Contracts**
   - [`src/IdentitySystem.sol`](/contracts/src/IdentitySystem.sol): Core contract inheriting `ERC721`, [`AttestationModule`](/contracts/src/modules/AttestationModule.sol), and [`FlagModule`](/contracts/src/modules/FlagModule.sol). Manages soulbound root identities, sub-token issuance, transfer permissions, wallet/root token indexing, and integration with `ProfileSystem`.
-  - [`src/ProfileSystem.sol`](/contracts/src/ProfileSystem.sol): Standalone system for profile metadata management, username registration/validation (`a-z`, `0-9`, `.`, `_`), profile metadata mapping (`DataTypes.ProfileMetadata`), and username release upon token burn.
+  - [`src/ProfileSystem.sol`](/contracts/src/ProfileSystem.sol): Standalone system for profile metadata management, username registration/validation (`a-z`, `0-9`, `.`, `_`), profile metadata mapping (`DataTypes.ProfileMetadata`), per-field and per-link-slot edits via `updateProfile` (username is permanent), 6 fixed custom-link slots (`getLinks`), and username/metadata/link release upon token burn.
   - [`src/modules/AttestationModule.sol`](/contracts/src/modules/AttestationModule.sol): Abstract module handling time-bound peer attestations (up to 3 years max), attestation clamping based on token expiration, active attestation queries, and revocations.
-  - [`src/modules/FlagModule.sol`](/contracts/src/modules/FlagModule.sol): Abstract module managing manual flagging by root identities and automated threshold-based flagging (`AUTO_FLAG_THRESHOLD = 3` flags with minimum active attestations check).
-  - [`src/libraries/DataTypes.sol`](/contracts/src/libraries/DataTypes.sol): Shared data structures: `TokenType` enum (`ROOT`, `SUB`, `PROFILE`), `RootIdentity`, `Token`, `RootIdentityView`, `Attestation`, and `ProfileMetadata`.
+  - [`src/modules/FlagModule.sol`](/contracts/src/modules/FlagModule.sol): Abstract module managing manual flagging by root identities and automated flagging on revocation (auto-flags once when a token has at least 20 lifetime attesters and at least 1/3 of them have revoked; manual flags only increment `flagCount`).
+  - [`src/libraries/DataTypes.sol`](/contracts/src/libraries/DataTypes.sol): Shared data structures: `TokenType` enum (`ROOT`, `SUB`, `PROFILE`), `RootIdentity`, `Token`, `RootIdentityView`, `Attestation`, `AttesterView`, `ProfileMetadata`, and the profile-edit types `ProfileField`, `FieldUpdate`, `ProfileLink`, `LinkUpdate`.
   - [`src/libraries/Errors.sol`](/contracts/src/libraries/Errors.sol): Centralized custom Solidity error definitions organized by subsystem (Transfer, Identity, Profile, Token, Attestation, Flag, Admin).
-  - [`src/libraries/Events.sol`](/contracts/src/libraries/Events.sol): Centralized Solidity event declarations (`RootIdentityCreated`, `ProfileCreated`, `TokenCreated`, `TokenTransferred`, `TokenBurned`, `AttestationGiven`, `AttestationRevoked`, `TokenFlagged`, `TokenAutoFlagged`, `ProfileSystemSet`).
+  - [`src/libraries/Events.sol`](/contracts/src/libraries/Events.sol): Centralized Solidity event declarations (`RootIdentityCreated`, `ProfileCreated`, `ProfileUpdated`, `TokenCreated`, `TokenTransferred`, `TokenBurned`, `AttestationGiven`, `AttestationRevoked`, `TokenFlagged`, `TokenAutoFlagged`, `ProfileSystemSet`).
 
 - **`script/` — Deployment & Maintenance**
   - [`script/Deploy.s.sol`](/contracts/script/Deploy.s.sol): Foundry deployment script deploying `IdentitySystem` and `ProfileSystem`, and wiring `setProfileSystem`.
   - [`script/HelperConfig.s.sol`](/contracts/script/HelperConfig.s.sol): Environment and network configuration helper.
 
 - **`test/` — Automated Test Suite**
-  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 72 unit, integration, and fuzz tests covering all contract flows and edge cases.
+  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 102 unit, integration, and fuzz tests covering all contract flows and edge cases.
 
 - **`docs/` — System Workflows**
   - [`docs/WORKFLOWS.md`](/contracts/docs/WORKFLOWS.md): Visual and structural workflow guides.

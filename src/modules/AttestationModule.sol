@@ -79,6 +79,8 @@ abstract contract AttestationModule {
     function revokeAttestation(uint256 tokenId) external {
         uint256 attesterRootId = _getCallerRootId();
         if (attesterRootId == 0) revert Errors.NoRootIdentity();
+        // Burned tokens keep their attestation records; revoking them would write into deleted token data
+        if (!_tokenExists(tokenId)) revert Errors.NotToken();
 
         if (!_hasActiveAttestation[attesterRootId][tokenId]) revert Errors.NoActiveAttestation();
 
@@ -145,25 +147,13 @@ abstract contract AttestationModule {
 
         uint256 count = 0;
         for (uint256 i = 0; i < allIds.length; i++) {
-            uint256 subId = allIds[i];
-            if (_hasActiveAttestation[attesterRootId][subId]) {
-                DataTypes.Attestation storage e = _attestations[subId][_activeAttestationIndex[attesterRootId][subId]];
-                if (_isAttestationActive(e)) {
-                    count++;
-                }
-            }
+            if (_hasLiveAttestation(attesterRootId, allIds[i])) count++;
         }
 
         tokenIds = new uint256[](count);
         uint256 j = 0;
         for (uint256 i = 0; i < allIds.length; i++) {
-            uint256 subId = allIds[i];
-            if (_hasActiveAttestation[attesterRootId][subId]) {
-                DataTypes.Attestation storage e = _attestations[subId][_activeAttestationIndex[attesterRootId][subId]];
-                if (_isAttestationActive(e)) {
-                    tokenIds[j++] = allIds[i];
-                }
-            }
+            if (_hasLiveAttestation(attesterRootId, allIds[i])) tokenIds[j++] = allIds[i];
         }
     }
 
@@ -187,12 +177,16 @@ abstract contract AttestationModule {
     }
 
     function hasAttested(uint256 attesterRootId, uint256 tokenId) external view returns (bool) {
-        if (!_hasActiveAttestation[attesterRootId][tokenId]) return false;
-        DataTypes.Attestation storage e = _attestations[tokenId][_activeAttestationIndex[attesterRootId][tokenId]];
-        return _isAttestationActive(e);
+        return _hasLiveAttestation(attesterRootId, tokenId);
     }
 
     // Internal Helpers
+
+    // Active (not revoked, not expired) attestation on a token that has not been burned
+    function _hasLiveAttestation(uint256 attesterRootId, uint256 tokenId) internal view returns (bool) {
+        if (!_hasActiveAttestation[attesterRootId][tokenId] || !_tokenExists(tokenId)) return false;
+        return _isAttestationActive(_attestations[tokenId][_activeAttestationIndex[attesterRootId][tokenId]]);
+    }
 
     function _isAttestationActive(DataTypes.Attestation storage attestation) internal view returns (bool) {
         return attestation.revokedAt == 0 && attestation.expiresAt > block.timestamp;
@@ -213,4 +207,6 @@ abstract contract AttestationModule {
     function _incrementRevokedCount(uint256 tokenId) internal virtual;
 
     function _getTokenValidUntil(uint256 id) internal view virtual returns (uint256);
+
+    function _tokenExists(uint256 id) internal view virtual returns (bool);
 }

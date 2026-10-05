@@ -301,6 +301,10 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         return tokens[id].validUntil;
     }
 
+    function _tokenExists(uint256 id) internal view override returns (bool) {
+        return _ownerOf(id) != address(0);
+    }
+
     // bridges AttestationModule and FlagModule
     function _checkFlaggingThreshold(uint256 tokenId) internal override(AttestationModule) {
         _checkFlaggingThresholdInternal(tokenId);
