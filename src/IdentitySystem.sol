@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
 import { AttestationModule } from "./modules/AttestationModule.sol";
 import { FlagModule } from "./modules/FlagModule.sol";
 import { DataTypes } from "./libraries/DataTypes.sol";
@@ -21,7 +22,13 @@ interface IProfileSystem {
  *         All abstract hooks from every module are resolved here.
  */
 contract IdentitySystem is ERC721, AttestationModule, FlagModule {
-    uint256 private _nextTokenId = 1;
+    // id = (type + 1) * SERIAL_SPACE + 10 scrambled digits, shown as id-/tk-/pf- + the digits
+    uint256 internal constant SERIAL_SPACE = 1e10;
+    uint256 private constant MIX = 6_180_339_887; // coprime with 1e10, so serial -> digits is one-to-one
+    uint256 private constant SALT = 3_141_592_653; // keeps the first id-/tk-/pf- from sharing digits
+
+    // Per-type mint counters, indexed by TokenType
+    uint256[3] public minted;
 
     // Admin & linked contracts
     address public immutable admin;
@@ -37,9 +44,6 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
     // Token storage
     mapping(uint256 => DataTypes.Token) public tokens;
     mapping(uint256 => uint256[]) public rootToTokenIds;
-
-    // Token type tracking  (TokenType.ROOT | TokenType.SUB | TokenType.PROFILE)
-    mapping(uint256 => DataTypes.TokenType) public tokenTypes;
 
     // Transfer history per token
     mapping(uint256 => address[]) public transferHistory;
@@ -77,11 +81,10 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
     function createRootIdentity(string calldata displayName) external returns (uint256) {
         if (ownerToRootId[msg.sender] != 0) revert Errors.AlreadyHasRoot();
 
-        uint256 rootId = _nextTokenId++;
+        uint256 rootId = _nextId(DataTypes.TokenType.ROOT);
         _mint(msg.sender, rootId);
 
         ownerToRootId[msg.sender] = rootId;
-        tokenTypes[rootId] = DataTypes.TokenType.ROOT;
 
         rootIdentities[rootId] = DataTypes.RootIdentity({
             walletAddress: msg.sender,
@@ -105,10 +108,8 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         if (rootId == 0) revert Errors.NoRootIdentity();
         if (!rootIdentities[rootId].isActive) revert Errors.RootDeactivated();
 
-        uint256 tokenId = _nextTokenId++;
+        uint256 tokenId = _nextId(DataTypes.TokenType.PROFILE);
         _mint(to, tokenId);
-
-        tokenTypes[tokenId] = DataTypes.TokenType.PROFILE;
 
         // Initialize a Token struct so attestation/flagging hooks work seamlessly
         tokens[tokenId] = DataTypes.Token({
@@ -153,10 +154,8 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         if (!rootIdentities[rootId].isActive) revert Errors.RootDeactivated();
         if (validUntil != 0 && validUntil <= block.timestamp) revert Errors.InvalidExpiry();
 
-        uint256 tokenId = _nextTokenId++;
+        uint256 tokenId = _nextId(DataTypes.TokenType.SUB);
         _mint(msg.sender, tokenId);
-
-        tokenTypes[tokenId] = DataTypes.TokenType.SUB;
 
         tokens[tokenId] = DataTypes.Token({
             tokenId: tokenId,
@@ -186,12 +185,12 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
 
     function transferToken(uint256 tokenId, address sendingTo) external {
         if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
-        if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) revert Errors.CannotTransferRoot();
+        if (tokenTypeOf(tokenId) == DataTypes.TokenType.ROOT) revert Errors.CannotTransferRoot();
         if (sendingTo == msg.sender) revert Errors.SelfTransfer();
         if (sendingTo == address(0)) revert Errors.ZeroAddress();
 
         // enforce one-profile-per-wallet on the receiving end
-        if (tokenTypes[tokenId] == DataTypes.TokenType.PROFILE) {
+        if (tokenTypeOf(tokenId) == DataTypes.TokenType.PROFILE) {
             if (hasProfile[sendingTo]) revert Errors.RecipientAlreadyHasProfile();
             hasProfile[sendingTo] = true;
             hasProfile[msg.sender] = false;
@@ -221,10 +220,10 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
 
     function burnToken(uint256 tokenId) external {
         if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
-        if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) revert Errors.NotToken();
+        if (tokenTypeOf(tokenId) == DataTypes.TokenType.ROOT) revert Errors.NotToken();
 
         // If burning a profile token, clear the wallet's profile flag and clean up ProfileSystem state
-        if (tokenTypes[tokenId] == DataTypes.TokenType.PROFILE) {
+        if (tokenTypeOf(tokenId) == DataTypes.TokenType.PROFILE) {
             hasProfile[msg.sender] = false;
             if (profileSystem != address(0)) {
                 IProfileSystem(profileSystem).cleanupBurnedProfile(tokenId);
@@ -241,7 +240,6 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
 
         // Clear token data so burned tokens cannot be attested/flagged
         delete tokens[tokenId];
-        delete tokenTypes[tokenId];
 
         // Burn the ERC721 token (permanent destruction)
         _burn(tokenId);
@@ -257,7 +255,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         // Allow mints (from = 0) and burns (to = 0) unconditionally
         if (from != address(0) && to != address(0)) {
             // Root tokens: NEVER transferable
-            if (tokenTypes[tokenId] == DataTypes.TokenType.ROOT) {
+            if (tokenTypeOf(tokenId) == DataTypes.TokenType.ROOT) {
                 revert Errors.RootNonTransferable();
             }
             // Sub & Profile tokens: only via transferToken()
@@ -278,7 +276,8 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
 
     // AttestationModule hooks
     function _requireTokenActive(uint256 id) internal view override(AttestationModule, FlagModule) {
-        if (tokenTypes[id] == DataTypes.TokenType.ROOT) revert Errors.NotToken();
+        // Existence first, so unknown ids revert NotToken rather than InvalidTokenId
+        if (!_tokenExists(id) || tokenTypeOf(id) == DataTypes.TokenType.ROOT) revert Errors.NotToken();
         if (tokens[id].validUntil != 0 && tokens[id].validUntil < block.timestamp) {
             revert Errors.TokenExpired();
         }
@@ -340,6 +339,13 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
 
     // Internal Helpers
 
+    function _nextId(DataTypes.TokenType t) private returns (uint256) {
+        uint256 serial = ++minted[uint256(t)];
+        // Caps each type at 1e10 - 1 mints
+        if (serial >= SERIAL_SPACE) revert Errors.IdSpaceExhausted();
+        return (uint256(t) + 1) * SERIAL_SPACE + ((serial * MIX + uint256(t) * SALT) % SERIAL_SPACE);
+    }
+
     function _removeFromWalletList(address wallet, uint256 tokenId) internal {
         uint256[] storage list = walletTokens[wallet];
         uint256 index = _walletTokenIndex[wallet][tokenId];
@@ -371,6 +377,43 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
     }
 
     // View Functions
+
+    /// @notice Type encoded in the id; does not check that the token exists.
+    function tokenTypeOf(uint256 id) public pure returns (DataTypes.TokenType) {
+        uint256 tag = id / SERIAL_SPACE;
+        if (tag == 0 || tag > 3) revert Errors.InvalidTokenId();
+        return DataTypes.TokenType(tag - 1);
+    }
+
+    /// @notice e.g. 20901699435 -> "tk-0901699435"
+    function formatTokenId(uint256 id) public pure returns (string memory) {
+        DataTypes.TokenType t = tokenTypeOf(id);
+        bytes memory out = bytes(
+            t == DataTypes.TokenType.ROOT
+                ? "id-0000000000"
+                : t == DataTypes.TokenType.SUB
+                    ? "tk-0000000000"
+                    : "pf-0000000000"
+        );
+        uint256 n = id % SERIAL_SPACE;
+        for (uint256 i = out.length; n > 0; n /= 10) {
+            out[--i] = bytes1(uint8(48 + (n % 10)));
+        }
+        return string(out);
+    }
+
+    /// @notice Wallet label, e.g. "DIT Profile pf-2463525193". No user strings, so no JSON escaping.
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        _requireOwned(tokenId);
+        DataTypes.TokenType t = tokenTypeOf(tokenId);
+        string memory label = t == DataTypes.TokenType.ROOT
+            ? "Root Identity"
+            : t == DataTypes.TokenType.SUB
+                ? "Token"
+                : "Profile";
+        bytes memory json = bytes(string.concat('{"name":"DIT ', label, " ", formatTokenId(tokenId), '"}'));
+        return string.concat("data:application/json;base64,", Base64.encode(json));
+    }
 
     function getTokensForRoot(uint256 rootId) external view returns (uint256[] memory) {
         return rootToTokenIds[rootId];
@@ -413,7 +456,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
     function getProfileTokenId(address wallet) public view returns (uint256) {
         uint256[] storage ids = walletTokens[wallet];
         for (uint256 i = 0; i < ids.length; i++) {
-            if (tokenTypes[ids[i]] == DataTypes.TokenType.PROFILE) return ids[i];
+            if (tokenTypeOf(ids[i]) == DataTypes.TokenType.PROFILE) return ids[i];
         }
         return 0;
     }

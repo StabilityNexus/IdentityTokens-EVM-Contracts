@@ -32,6 +32,8 @@ library Errors {
     // Token
     error NotToken();
     error TokenExpired();
+    error InvalidTokenId();
+    error IdSpaceExhausted();
 
     // Attestation
     error CannotAttestOwnToken();
