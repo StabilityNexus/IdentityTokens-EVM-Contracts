@@ -27,7 +27,7 @@ library Errors {
     error InvalidProfileUsernameChar();
     error NotProfileOwner();
     error ProfileNotFound();
-    error InvalidLinkSlot();
+    error InvalidLinkIndex();
 
     // Token
     error NotToken();

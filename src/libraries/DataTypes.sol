@@ -90,9 +90,9 @@ library DataTypes {
         string url;
     }
 
-    // Writes one fixed link slot; an empty url clears the slot.
+    // Writes the link at `index`; index == length appends, an empty url clears it.
     struct LinkUpdate {
-        uint8 slot;
+        uint32 index;
         string label;
         string url;
     }
