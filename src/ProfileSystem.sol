@@ -20,9 +20,8 @@ contract ProfileSystem {
     mapping(uint256 => DataTypes.ProfileMetadata) public profiles;
     mapping(string => uint256) public usernameToProfileTokenId;
 
-    // Custom links live in fixed slots so editing one link rewrites only that slot
-    uint8 internal constant MAX_LINKS = 6;
-    mapping(uint256 => DataTypes.ProfileLink[MAX_LINKS]) internal _links;
+    // Custom links, edited by index so changing one link rewrites only that entry; an empty url is a gap
+    mapping(uint256 => DataTypes.ProfileLink[]) internal _links;
 
     // Constructor
 
@@ -35,7 +34,7 @@ contract ProfileSystem {
     /**
      * @notice Creates the caller's one-time profile and mints its profile token.
      * @param data Profile metadata; `name` and a valid, unique `username` are required.
-     * @param links Initial custom links, one entry per slot (slot < MAX_LINKS).
+     * @param links Initial custom links, appended in order (index 0, 1, 2, ...).
      * @return The minted profile token id.
      */
     function createProfile(
@@ -75,11 +74,11 @@ contract ProfileSystem {
     // Profile Editing
 
     /**
-     * @notice Edits only the given fields and link slots of a profile; untouched data is not rewritten.
+     * @notice Edits only the given fields and links of a profile; untouched data is not rewritten.
      * @dev The username cannot be edited (ProfileField has no USERNAME member).
      * @param tokenId The profile token id; the caller must currently own it.
      * @param fields Fields to overwrite. Setting NAME to an empty string reverts.
-     * @param links Link slots to overwrite; an empty url clears the slot.
+     * @param links Links to write by index; index == length appends, an empty url clears the link.
      */
     function updateProfile(
         uint256 tokenId,
@@ -113,9 +112,9 @@ contract ProfileSystem {
             delete usernameToProfileTokenId[username];
         }
 
-        // Clear metadata and links
+        // Clear metadata. Links are left in place: deleting an unbounded list could run out of gas
+        // and block the burn. Token ids are never reused and getLinks checks the profile, so they stay unreachable.
         delete profiles[tokenId];
-        delete _links[tokenId];
 
         // Note: hasMintedProfile stays true — permanent mint guard (user already used their one-time mint)
     }
@@ -127,11 +126,31 @@ contract ProfileSystem {
     }
 
     /**
-     * @notice Returns all custom link slots of a profile; empty slots have an empty url.
+     * @notice Returns one page of a profile's custom links; gaps have an empty url.
      * @param tokenId The profile token id.
+     * @param offset Index of the first link to return.
+     * @param limit Maximum number of links to return.
+     * @return page Links `offset` .. `offset + page.length - 1`.
+     * @return total Number of stored links, gaps included; 0 for a burned or unknown profile.
      */
-    function getLinks(uint256 tokenId) external view returns (DataTypes.ProfileLink[MAX_LINKS] memory) {
-        return _links[tokenId];
+    function getLinks(
+        uint256 tokenId,
+        uint256 offset,
+        uint256 limit
+    ) external view returns (DataTypes.ProfileLink[] memory page, uint256 total) {
+        if (bytes(profiles[tokenId].username).length == 0) return (page, 0);
+
+        DataTypes.ProfileLink[] storage all = _links[tokenId];
+        total = all.length;
+        if (offset >= total) return (page, total);
+
+        uint256 remaining = total - offset;
+        uint256 size = limit < remaining ? limit : remaining;
+
+        page = new DataTypes.ProfileLink[](size);
+        for (uint256 i = 0; i < size; i++) {
+            page[i] = all[offset + i];
+        }
     }
 
     // Internal Helpers
@@ -163,18 +182,31 @@ contract ProfileSystem {
         }
     }
 
-    function _applyLinks(uint256 tokenId, DataTypes.LinkUpdate[] calldata links) internal {
-        for (uint256 i = 0; i < links.length; i++) {
-            DataTypes.LinkUpdate calldata link = links[i];
-            if (link.slot >= MAX_LINKS) revert Errors.InvalidLinkSlot();
+    function _applyLinks(uint256 tokenId, DataTypes.LinkUpdate[] calldata updates) internal {
+        DataTypes.ProfileLink[] storage links = _links[tokenId];
 
-            if (bytes(link.url).length == 0) {
-                delete _links[tokenId][link.slot];
-            } else {
-                DataTypes.ProfileLink storage stored = _links[tokenId][link.slot];
-                stored.label = link.label;
-                stored.url = link.url;
+        for (uint256 i = 0; i < updates.length; i++) {
+            DataTypes.LinkUpdate calldata update = updates[i];
+            bool clear = bytes(update.url).length == 0;
+
+            if (update.index == links.length && !clear) {
+                links.push();
+            } else if (update.index >= links.length) {
+                revert Errors.InvalidLinkIndex();
             }
+
+            if (clear) {
+                delete links[update.index];
+            } else {
+                DataTypes.ProfileLink storage stored = links[update.index];
+                stored.label = update.label;
+                stored.url = update.url;
+            }
+        }
+
+        // Drop cleared links at the end so the list never ends in gaps
+        while (links.length > 0 && bytes(links[links.length - 1].url).length == 0) {
+            links.pop();
         }
     }
 

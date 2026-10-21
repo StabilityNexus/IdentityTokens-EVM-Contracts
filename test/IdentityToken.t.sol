@@ -60,14 +60,28 @@ contract IdentitySystemTest is Test {
         fields[0] = DataTypes.FieldUpdate(field, value);
     }
 
-    /// @dev Helper: a single-slot link update list.
+    /// @dev Helper: a single-link update list.
     function _link(
-        uint8 slot,
+        uint32 index,
         string memory label,
         string memory url
     ) internal pure returns (DataTypes.LinkUpdate[] memory links) {
         links = new DataTypes.LinkUpdate[](1);
-        links[0] = DataTypes.LinkUpdate(slot, label, url);
+        links[0] = DataTypes.LinkUpdate(index, label, url);
+    }
+
+    /// @dev Helper: `count` links "L0".."Ln", appended in order.
+    function _numberedLinks(uint32 count) internal pure returns (DataTypes.LinkUpdate[] memory links) {
+        links = new DataTypes.LinkUpdate[](count);
+        for (uint32 i = 0; i < count; i++) {
+            string memory n = vm.toString(i);
+            links[i] = DataTypes.LinkUpdate(i, string.concat("L", n), string.concat("https://", n, ".dev"));
+        }
+    }
+
+    /// @dev Helper: every stored link of a profile, gaps included.
+    function _storedLinks(uint256 profileId) internal view returns (DataTypes.ProfileLink[] memory links) {
+        (links, ) = profileSystem.getLinks(profileId, 0, type(uint256).max);
     }
 
     /// @dev Helper: profile metadata with only name and username set.
@@ -1709,7 +1723,7 @@ contract IdentitySystemTest is Test {
     }
 
     // =========================================================================
-    // Profile Editing (per-field and per-link-slot updates)
+    // Profile Editing (per-field and per-link updates)
     // =========================================================================
 
     function test_CreateProfile_WithLinks() public {
@@ -1718,18 +1732,30 @@ contract IdentitySystemTest is Test {
 
         DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
         links[0] = DataTypes.LinkUpdate(0, "Farcaster", "https://warpcast.com/alice");
-        links[1] = DataTypes.LinkUpdate(3, "Blog", "https://alice.blog");
+        links[1] = DataTypes.LinkUpdate(1, "Blog", "https://alice.blog");
 
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), links);
 
-        DataTypes.ProfileLink[6] memory stored = profileSystem.getLinks(profileId);
+        DataTypes.ProfileLink[] memory stored = _storedLinks(profileId);
+        assertEq(stored.length, 2);
         assertEq(stored[0].label, "Farcaster");
         assertEq(stored[0].url, "https://warpcast.com/alice");
-        assertEq(stored[3].label, "Blog");
-        assertEq(stored[3].url, "https://alice.blog");
-        assertEq(stored[1].url, "");
-        assertEq(stored[5].url, "");
+        assertEq(stored[1].label, "Blog");
+        assertEq(stored[1].url, "https://alice.blog");
+    }
+
+    function test_CreateProfile_MoreThanSixLinks() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(10));
+
+        DataTypes.ProfileLink[] memory stored = _storedLinks(profileId);
+        assertEq(stored.length, 10);
+        assertEq(stored[0].label, "L0");
+        assertEq(stored[9].label, "L9");
+        assertEq(stored[9].url, "https://9.dev");
     }
 
     function test_UpdateProfile_SingleField() public {
@@ -1770,7 +1796,7 @@ contract IdentitySystemTest is Test {
 
         DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
         links[0] = DataTypes.LinkUpdate(0, "Warpcast", "https://warpcast.com/alice.eth");
-        links[1] = DataTypes.LinkUpdate(5, "Blog", "https://alice.blog");
+        links[1] = DataTypes.LinkUpdate(1, "Blog", "https://alice.blog");
 
         vm.prank(alice);
         profileSystem.updateProfile(profileId, fields, links);
@@ -1780,32 +1806,121 @@ contract IdentitySystemTest is Test {
         assertEq(stored.nationality, "JP");
         assertEq(stored.xDotCom, "alice");
 
-        DataTypes.ProfileLink[6] memory storedLinks = profileSystem.getLinks(profileId);
+        DataTypes.ProfileLink[] memory storedLinks = _storedLinks(profileId);
+        assertEq(storedLinks.length, 2);
         assertEq(storedLinks[0].label, "Warpcast");
         assertEq(storedLinks[0].url, "https://warpcast.com/alice.eth");
-        assertEq(storedLinks[5].label, "Blog");
-        assertEq(storedLinks[5].url, "https://alice.blog");
+        assertEq(storedLinks[1].label, "Blog");
+        assertEq(storedLinks[1].url, "https://alice.blog");
     }
 
-    function test_UpdateProfile_ClearLinkSlot() public {
+    function test_UpdateProfile_ClearMiddleLinkLeavesGap() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
-
-        DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](3);
-        links[0] = DataTypes.LinkUpdate(0, "One", "https://one.dev");
-        links[1] = DataTypes.LinkUpdate(1, "Two", "https://two.dev");
-        links[2] = DataTypes.LinkUpdate(2, "Three", "https://three.dev");
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), links);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
 
         vm.prank(alice);
         profileSystem.updateProfile(profileId, _noFields(), _link(1, "", ""));
 
-        DataTypes.ProfileLink[6] memory stored = profileSystem.getLinks(profileId);
+        DataTypes.ProfileLink[] memory stored = _storedLinks(profileId);
+        assertEq(stored.length, 3);
         assertEq(stored[1].label, "");
         assertEq(stored[1].url, "");
-        assertEq(stored[0].url, "https://one.dev");
-        assertEq(stored[2].url, "https://three.dev");
+        assertEq(stored[0].url, "https://0.dev");
+        assertEq(stored[2].url, "https://2.dev");
+    }
+
+    function test_UpdateProfile_FillGap() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
+
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), _link(1, "", ""));
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), _link(1, "Blog", "https://alice.blog"));
+
+        DataTypes.ProfileLink[] memory stored = _storedLinks(profileId);
+        assertEq(stored.length, 3);
+        assertEq(stored[1].label, "Blog");
+        assertEq(stored[1].url, "https://alice.blog");
+    }
+
+    function test_UpdateProfile_FillGapAndAppend() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), _link(1, "", ""));
+
+        // What the frontend sends when two links are added to [L0, gap, L2]
+        DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
+        links[0] = DataTypes.LinkUpdate(1, "D", "https://d.dev");
+        links[1] = DataTypes.LinkUpdate(3, "E", "https://e.dev");
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), links);
+
+        DataTypes.ProfileLink[] memory stored = _storedLinks(profileId);
+        assertEq(stored.length, 4);
+        assertEq(stored[1].label, "D");
+        assertEq(stored[2].url, "https://2.dev");
+        assertEq(stored[3].label, "E");
+    }
+
+    function test_UpdateProfile_ClearTailTrimsTrailingGaps() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
+
+        // Index 1 becomes a gap, then clearing index 2 drops both
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), _link(1, "", ""));
+        vm.prank(alice);
+        profileSystem.updateProfile(profileId, _noFields(), _link(2, "", ""));
+
+        (DataTypes.ProfileLink[] memory stored, uint256 total) = profileSystem.getLinks(profileId, 0, 10);
+        assertEq(total, 1);
+        assertEq(stored.length, 1);
+        assertEq(stored[0].url, "https://0.dev");
+    }
+
+    function test_GetLinks_Pagination() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(5));
+
+        (DataTypes.ProfileLink[] memory page, uint256 total) = profileSystem.getLinks(profileId, 1, 2);
+        assertEq(total, 5);
+        assertEq(page.length, 2);
+        assertEq(page[0].label, "L1");
+        assertEq(page[1].label, "L2");
+
+        // The last page is cut at the end of the list
+        (page, ) = profileSystem.getLinks(profileId, 4, 10);
+        assertEq(page.length, 1);
+        assertEq(page[0].label, "L4");
+
+        // A huge limit must not overflow
+        (page, ) = profileSystem.getLinks(profileId, 2, type(uint256).max);
+        assertEq(page.length, 3);
+
+        (page, total) = profileSystem.getLinks(profileId, 5, 1);
+        assertEq(page.length, 0);
+        assertEq(total, 5);
+
+        (page, ) = profileSystem.getLinks(profileId, 0, 0);
+        assertEq(page.length, 0);
+    }
+
+    function test_GetLinks_UnknownProfile() public view {
+        (DataTypes.ProfileLink[] memory page, uint256 total) = profileSystem.getLinks(12345, 0, 10);
+        assertEq(page.length, 0);
+        assertEq(total, 0);
     }
 
     function test_UpdateProfile_EmitsEvent() public {
@@ -1851,21 +1966,18 @@ contract IdentitySystemTest is Test {
         profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, "Alice"), _noLinks());
     }
 
-    function test_BurnProfile_ClearsLinks() public {
+    function test_BurnProfile_HidesLinks() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(
-            _meta("Alice", "alice"),
-            _link(2, "Blog", "https://alice.blog")
-        );
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
 
         vm.prank(alice);
         identitySystem.burnToken(profileId);
 
-        DataTypes.ProfileLink[6] memory stored = profileSystem.getLinks(profileId);
-        assertEq(stored[2].label, "");
-        assertEq(stored[2].url, "");
+        (DataTypes.ProfileLink[] memory stored, uint256 total) = profileSystem.getLinks(profileId, 0, 10);
+        assertEq(stored.length, 0);
+        assertEq(total, 0);
         assertEq(profileSystem.getProfile(profileId).username, "");
         assertFalse(profileSystem.usernameTaken("alice"));
     }
@@ -1886,12 +1998,36 @@ contract IdentitySystemTest is Test {
         profileSystem.updateProfile(profileId, _field(DataTypes.ProfileField.NAME, ""), _noLinks());
     }
 
-    function test_RevertIf_UpdateProfile_InvalidLinkSlot() public {
+    function test_RevertIf_UpdateProfile_LinkIndexPastEnd() public {
+        uint256 profileId = _createProfile(alice, "alice");
+
+        // Appends must land exactly at the end of the list
+        vm.prank(alice);
+        vm.expectRevert(Errors.InvalidLinkIndex.selector);
+        profileSystem.updateProfile(profileId, _noFields(), _link(1, "Blog", "https://alice.blog"));
+    }
+
+    function test_RevertIf_UpdateProfile_AppendEmptyLink() public {
         uint256 profileId = _createProfile(alice, "alice");
 
         vm.prank(alice);
-        vm.expectRevert(Errors.InvalidLinkSlot.selector);
-        profileSystem.updateProfile(profileId, _noFields(), _link(6, "Blog", "https://alice.blog"));
+        vm.expectRevert(Errors.InvalidLinkIndex.selector);
+        profileSystem.updateProfile(profileId, _noFields(), _link(0, "Blog", ""));
+    }
+
+    function test_RevertIf_UpdateProfile_AppendsOutOfOrder() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
+
+        // Appends must arrive in ascending order: index 4 comes before 3 exists
+        DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
+        links[0] = DataTypes.LinkUpdate(4, "E", "https://e.dev");
+        links[1] = DataTypes.LinkUpdate(3, "D", "https://d.dev");
+        vm.prank(alice);
+        vm.expectRevert(Errors.InvalidLinkIndex.selector);
+        profileSystem.updateProfile(profileId, _noFields(), links);
     }
 
     function test_RevertIf_UpdateProfile_NoProfile() public {
