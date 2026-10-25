@@ -53,4 +53,10 @@ library Errors {
     error OnlyProfileSystem();
     error OnlyIdentitySystem();
     error ProfileSystemAlreadySet();
+
+    // Dev fee
+    error NotDev();
+    error NotPendingDev();
+    error DevFeeTooHigh();
+    error DevFeeTransferFailed();
 }

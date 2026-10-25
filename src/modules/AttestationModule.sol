@@ -27,7 +27,7 @@ abstract contract AttestationModule {
 
     // External Functions
 
-    function attestToken(uint256 tokenId, uint256 duration) external {
+    function attestToken(uint256 tokenId, uint256 duration) external payable {
         uint256 attesterRootId = _getCallerRootId();
         if (attesterRootId == 0) revert Errors.NoRootIdentity();
 
@@ -76,7 +76,7 @@ abstract contract AttestationModule {
         emit Events.AttestationGiven(attesterRootId, tokenId, expiresAt);
     }
 
-    function revokeAttestation(uint256 tokenId) external {
+    function revokeAttestation(uint256 tokenId) external payable {
         uint256 attesterRootId = _getCallerRootId();
         if (attesterRootId == 0) revert Errors.NoRootIdentity();
         // Burned tokens keep their attestation records; revoking them would write into deleted token data

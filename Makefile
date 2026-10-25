@@ -29,7 +29,7 @@ build:; forge build
 test:; forge test
 
 # Deploy to a network (Requires .env file with RPC_URL and PRIVATE_KEY)
-deploy:; forge script script/Deploy.s.sol:Deploy --rpc-url $(RPC_URL) --private-key $(PRIVATE_KEY) --broadcast
+deploy:; forge script script/Deploy.s.sol:Deploy --rpc-url $(RPC_URL) --private-key $(PRIVATE_KEY) --broadcast $(FLAGS)
 
 # Deploy to Anvil (Localhost) - No keys needed
 deploy-anvil:; forge script script/Deploy.s.sol:Deploy --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --broadcast
