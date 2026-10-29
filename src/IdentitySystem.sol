@@ -285,7 +285,10 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
 
     function _requireNotSelfAttestation(uint256 attesterRootId, uint256 tokenId) internal view override {
         uint256 ownerRootId = ownerToRootId[ownerOf(tokenId)];
-        if (attesterRootId == ownerRootId) revert Errors.CannotAttestOwnToken();
+        // The creator too, or they could park the token on another wallet, attest it and take it back
+        if (attesterRootId == ownerRootId || attesterRootId == tokens[tokenId].parentRootId) {
+            revert Errors.CannotAttestOwnToken();
+        }
     }
 
     function _incrementTotalAttestationCount(uint256 tokenId) internal override {

@@ -698,6 +698,29 @@ contract IdentitySystemTest is Test {
         assertEq(history[1], bob);
     }
 
+    function test_RevertIf_AttestToken_CreatorWhileParked() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        // Parked on a wallet without a root
+        vm.prank(alice);
+        identitySystem.transferToken(subId, charlie);
+        vm.prank(alice);
+        vm.expectRevert(Errors.CannotAttestOwnToken.selector);
+        identitySystem.attestToken(subId, 365 days);
+
+        // Parked on a wallet with a root
+        vm.prank(charlie);
+        identitySystem.transferToken(subId, bob);
+        vm.prank(alice);
+        vm.expectRevert(Errors.CannotAttestOwnToken.selector);
+        identitySystem.attestToken(subId, 365 days);
+    }
+
     function test_TransferToken_PreservesAttestations() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
