@@ -7,6 +7,9 @@ import { Events } from "../libraries/Events.sol";
 abstract contract FlagModule {
     uint256 internal constant MIN_ATTESTATIONS_FOR_AUTO_FLAG = 20;
 
+    // Roots younger than this don't count toward auto-flag, so fresh fake roots can't force a flag
+    uint256 public constant MIN_ROOT_AGE = 30 days;
+
     // Tracks which root identity has already flagged a given token
     mapping(uint256 => mapping(uint256 => bool)) internal _hasRootFlagged;
 

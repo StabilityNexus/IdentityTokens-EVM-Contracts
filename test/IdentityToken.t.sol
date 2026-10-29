@@ -23,8 +23,8 @@ contract IdentitySystemTest is Test {
         identitySystem.setProfileSystem(address(profileSystem));
     }
 
-    /// @dev Helper: creates `count` fresh root identities (starting at `startAddr`)
-    ///      and has each one attest `tokenId` with the given duration.
+    /// @dev Helper: creates `count` root identities (starting at `startAddr`), ages them
+    ///      so they count toward auto-flag, and has each one attest `tokenId`.
     function _createAttesters(
         uint256 tokenId,
         uint160 startAddr,
@@ -32,13 +32,20 @@ contract IdentitySystemTest is Test {
         uint256 duration
     ) internal returns (uint160 nextAddr) {
         for (uint256 i = 0; i < count; i++) {
-            address attester = address(startAddr + uint160(i));
-            vm.prank(attester);
+            vm.prank(address(startAddr + uint160(i)));
             identitySystem.createRootIdentity("");
-            vm.prank(attester);
+        }
+        _ageRoots();
+        for (uint256 i = 0; i < count; i++) {
+            vm.prank(address(startAddr + uint160(i)));
             identitySystem.attestToken(tokenId, duration);
         }
         return startAddr + uint160(count);
+    }
+
+    /// @dev Helper: moves time past MIN_ROOT_AGE so every root made so far is established.
+    function _ageRoots() internal {
+        vm.warp(block.timestamp + identitySystem.MIN_ROOT_AGE());
     }
 
     /// @dev Helper: an empty link list for createProfile / updateProfile.
@@ -184,6 +191,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -395,6 +403,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -428,6 +437,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -462,6 +472,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -1270,6 +1281,48 @@ contract IdentitySystemTest is Test {
         assertEq(flagCountAfter, 2); // manual (1) + auto (1) = 2
     }
 
+    function test_AutoFlag_FreshRootsCannotForceFlag() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        // 20 roots made on the spot attest and 7 revoke: enough to flag if they counted
+        for (uint160 i = 0; i < 20; i++) {
+            vm.startPrank(address(0x500 + i));
+            identitySystem.createRootIdentity("");
+            identitySystem.attestToken(subId, 365 days);
+            if (i < 7) identitySystem.revokeAttestation(subId);
+            vm.stopPrank();
+        }
+
+        (, , , , , , , , uint256 totalCount, uint256 revokedCount, bool isFlagged, , ) = identitySystem.tokens(subId);
+        assertEq(totalCount, 0);
+        assertEq(revokedCount, 0);
+        assertFalse(isFlagged);
+        // The attestations are still recorded and shown
+        assertEq(identitySystem.getActiveAttestationCount(subId), 13);
+    }
+
+    function test_RevokeAttestation_NotCountedIfAttestedWhileNew() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        vm.prank(bob);
+        identitySystem.attestToken(subId, 365 days);
+        _ageRoots();
+        vm.prank(bob);
+        identitySystem.revokeAttestation(subId);
+
+        (, , , , , , , , uint256 totalCount, uint256 revokedCount, , , ) = identitySystem.tokens(subId);
+        assertEq(totalCount, 0);
+        assertEq(revokedCount, 0);
+    }
+
     // =========================================================================
     // Cached counter verification
     // =========================================================================
@@ -1283,6 +1336,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(charlie);
         identitySystem.createRootIdentity("Charlie");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
