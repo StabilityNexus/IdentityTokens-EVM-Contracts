@@ -1,58 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Test } from "forge-std/Test.sol";
 import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
-import { IdentitySystem } from "../src/IdentitySystem.sol";
+import { BaseTest } from "./utils/BaseTest.sol";
 import { ProfileSystem } from "../src/ProfileSystem.sol";
 import { DataTypes } from "../src/libraries/DataTypes.sol";
 import { Errors } from "../src/libraries/Errors.sol";
 import { Events } from "../src/libraries/Events.sol";
 
-contract IdentitySystemTest is Test {
-    IdentitySystem public identitySystem;
-    ProfileSystem public profileSystem;
-
-    address public alice = address(0x1);
-    address public bob = address(0x2);
-    address public charlie = address(0x3);
-
-    function setUp() public {
-        identitySystem = new IdentitySystem(address(0xDE7), address(0xFEE), 100);
-        profileSystem = new ProfileSystem(address(identitySystem));
-        identitySystem.setProfileSystem(address(profileSystem));
-    }
-
-    /// @dev Helper: creates `count` root identities (starting at `startAddr`), ages them
-    ///      so they count toward auto-flag, and has each one attest `tokenId`.
-    function _createAttesters(
-        uint256 tokenId,
-        uint160 startAddr,
-        uint256 count,
-        uint256 duration
-    ) internal returns (uint160 nextAddr) {
-        for (uint256 i = 0; i < count; i++) {
-            vm.prank(address(startAddr + uint160(i)));
-            identitySystem.createRootIdentity("");
-        }
-        _ageRoots();
-        for (uint256 i = 0; i < count; i++) {
-            vm.prank(address(startAddr + uint160(i)));
-            identitySystem.attestToken(tokenId, duration);
-        }
-        return startAddr + uint160(count);
-    }
-
-    /// @dev Helper: moves time past MIN_ROOT_AGE so every root made so far is established.
-    function _ageRoots() internal {
-        vm.warp(block.timestamp + identitySystem.MIN_ROOT_AGE());
-    }
-
-    /// @dev Helper: an empty link list for createProfile / updateProfile.
-    function _noLinks() internal pure returns (DataTypes.LinkUpdate[] memory) {
-        return new DataTypes.LinkUpdate[](0);
-    }
-
+contract IdentitySystemTest is BaseTest {
     /// @dev Helper: an empty field list for updateProfile.
     function _noFields() internal pure returns (DataTypes.FieldUpdate[] memory) {
         return new DataTypes.FieldUpdate[](0);
@@ -77,48 +33,6 @@ contract IdentitySystemTest is Test {
         links[0] = DataTypes.LinkUpdate(index, label, url);
     }
 
-    /// @dev Helper: `count` links "L0".."Ln", appended in order.
-    function _numberedLinks(uint32 count) internal pure returns (DataTypes.LinkUpdate[] memory links) {
-        links = new DataTypes.LinkUpdate[](count);
-        for (uint32 i = 0; i < count; i++) {
-            string memory n = vm.toString(i);
-            links[i] = DataTypes.LinkUpdate(i, string.concat("L", n), string.concat("https://", n, ".dev"));
-        }
-    }
-
-    /// @dev Helper: every stored link of a profile, gaps included.
-    function _storedLinks(uint256 profileId) internal view returns (DataTypes.ProfileLink[] memory links) {
-        (links, ) = profileSystem.getLinks(profileId, 0, type(uint256).max);
-    }
-
-    /// @dev Helper: profile metadata with only name and username set.
-    function _meta(
-        string memory name,
-        string memory username
-    ) internal pure returns (DataTypes.ProfileMetadata memory) {
-        return
-            DataTypes.ProfileMetadata({
-                name: name,
-                username: username,
-                nationality: "",
-                github: "",
-                email: "",
-                discord: "",
-                xDotCom: "",
-                websitePortfolioLink: "",
-                ens: "",
-                avatarId: ""
-            });
-    }
-
-    /// @dev Helper: gives `user` a root identity and a minimal profile; returns the profile token id.
-    function _createProfile(address user, string memory username) internal returns (uint256) {
-        vm.prank(user);
-        identitySystem.createRootIdentity(username);
-        vm.prank(user);
-        return profileSystem.createProfile(_meta(username, username), _noLinks());
-    }
-
     // =========================================================================
     // Root Identity
     // =========================================================================
@@ -141,8 +55,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_CreateRootIdentity_AlreadyHasRoot() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyHasRoot.selector);
@@ -154,8 +67,7 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_CreateToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken(
@@ -186,15 +98,10 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_AttestToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -213,14 +120,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_AttestToken_3YearDuration() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 3 * 365 days);
@@ -230,14 +132,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_AttestToken_CustomDuration_60Days() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 60 days);
@@ -247,11 +144,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_AttestToken_NoRoot() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(charlie);
         vm.expectRevert(Errors.NoRootIdentity.selector);
@@ -259,11 +153,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_AttestToken_SelfAttestation() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         vm.expectRevert(Errors.CannotAttestOwnToken.selector);
@@ -271,14 +162,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_AttestToken_AlreadyAttested() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -293,11 +179,8 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_AttestationClamped_ToTokenValidity() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
 
         // Token valid for 2 years
         vm.prank(alice);
@@ -318,11 +201,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_AttestationClamped_TokenExpiresTooSoon() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
 
         // Token valid for only 5 days — less than MIN_ATTESTATION_DURATION
         vm.prank(alice);
@@ -341,14 +221,9 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_AttestationExpires_AfterValidity() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -369,14 +244,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_ReAttest_AfterExpiry() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         // Bob attests with 1-year validity
         vm.prank(bob);
@@ -398,15 +268,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_ReAttest_AfterRevocation() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         // Bob attests
         vm.prank(bob);
@@ -432,15 +297,10 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_AttestRevokeLoop_DoesNotInflateTotalCount() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         // Bob does 5 attest-revoke cycles
         for (uint256 i = 0; i < 5; i++) {
@@ -467,15 +327,10 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_RevokeAttestation() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -495,14 +350,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_RevokeAttestation_NoActiveAttestation() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         // Bob has not attested — revoke should fail
         vm.prank(bob);
@@ -511,14 +361,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_RevokeAttestation_AlreadyRevoked() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -532,17 +377,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_RevokeAttestation_NonAttester() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(charlie);
-        identitySystem.createRootIdentity("Charlie");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        _root(charlie, "Charlie");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -554,14 +392,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_RevokeAttestation_Expired() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -580,14 +413,9 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_GetActiveAttestations() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -603,17 +431,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetActiveAttestationCount() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(charlie);
-        identitySystem.createRootIdentity("Charlie");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        _root(charlie, "Charlie");
+        uint256 subId = _token(alice);
 
         // Two attestations
         vm.prank(bob);
@@ -633,14 +454,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetAttestationsByAttester() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -651,14 +467,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetAttestationsByAttester_ExcludesExpired() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
@@ -671,14 +482,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_HasAttested() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         assertFalse(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
@@ -693,11 +499,8 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_TransferToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         identitySystem.transferToken(subId, bob);
@@ -710,16 +513,14 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_AttestToken_CreatorWhileParked() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         // Parked on a wallet without a root
         vm.prank(alice);
         identitySystem.transferToken(subId, charlie);
+
         vm.prank(alice);
         vm.expectRevert(Errors.CannotAttestOwnToken.selector);
         identitySystem.attestToken(subId, 365 days);
@@ -727,20 +528,16 @@ contract IdentitySystemTest is Test {
         // Parked on a wallet with a root
         vm.prank(charlie);
         identitySystem.transferToken(subId, bob);
+
         vm.prank(alice);
         vm.expectRevert(Errors.CannotAttestOwnToken.selector);
         identitySystem.attestToken(subId, 365 days);
     }
 
     function test_TransferToken_PreservesAttestations() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         // Bob attests with 3-year validity
         vm.prank(bob);
@@ -764,11 +561,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_TransferToken_NotHolder() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotHolder.selector);
@@ -776,8 +570,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_TransferRootToken() public {
-        vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("Alice");
+        uint256 rootId = _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.CannotTransferRoot.selector);
@@ -785,11 +578,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_TransferToken_SelfTransfer() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         vm.expectRevert(Errors.SelfTransfer.selector);
@@ -797,11 +587,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_TransferToken_ZeroAddress() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         vm.expectRevert(Errors.ZeroAddress.selector);
@@ -809,9 +596,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_TransferToken_Expired() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
 
@@ -827,11 +612,8 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_BurnToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         identitySystem.burnToken(subId);
@@ -841,11 +623,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_BurnToken_EmitsEvent() public {
-        vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 rootId = _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.expectEmit(true, true, false, true);
         emit Events.TokenBurned(subId, rootId);
@@ -855,14 +634,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_BurnedTokenCannotBeAttested() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         identitySystem.burnToken(subId);
@@ -873,11 +647,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_BurnToken_RemovesFromWalletList() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         uint256[] memory walletBefore = identitySystem.getWalletTokens(alice);
         assertEq(walletBefore.length, 1);
@@ -890,11 +661,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_BurnToken_NotHolder() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotHolder.selector);
@@ -902,8 +670,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_BurnToken_NotToken() public {
-        vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("Alice");
+        uint256 rootId = _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.NotToken.selector);
@@ -911,11 +678,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_BurnToken_AlreadyBurned() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         identitySystem.burnToken(subId);
@@ -926,12 +690,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_BurnToken_RemovesFromRootTokenList() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId1 = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-
+        _root(alice, "Alice");
+        uint256 subId1 = _token(alice);
         vm.prank(alice);
         uint256 subId2 = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
 
@@ -952,11 +712,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_BurnToken_RemovesFromRootTokenList_SingleToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         identitySystem.burnToken(subId);
@@ -971,14 +728,11 @@ contract IdentitySystemTest is Test {
     }
 
     function test_HasAttested_FalseAfterBurn() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         uint256 bobRootId = identitySystem.ownerToRootId(bob);
+        uint256 subId = _token(alice);
 
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
         assertTrue(identitySystem.hasAttested(bobRootId, subId));
@@ -990,14 +744,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetAttestationsByAttester_SkipsBurned() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         uint256 bobRootId = identitySystem.ownerToRootId(bob);
-
-        vm.prank(alice);
-        uint256 keptId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 keptId = _token(alice);
         vm.prank(alice);
         uint256 burnedId = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
 
@@ -1015,13 +765,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_RevokeAttestation_BurnedToken() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
 
@@ -1038,8 +785,7 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_GetRootIdentityView() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice Nakamoto");
+        _root(alice, "Alice Nakamoto");
 
         DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
             identitySystem.ownerToRootId(alice)
@@ -1053,15 +799,13 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetWalletTokens() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256[] memory walletTokens = identitySystem.getWalletTokens(alice);
 
-        uint256[] memory walletToks = identitySystem.getWalletTokens(alice);
-        assertEq(walletToks.length, 1);
-        assertEq(walletToks[0], subId);
+        assertEq(walletTokens.length, 1);
+        assertEq(walletTokens[0], subId);
     }
 
     // =========================================================================
@@ -1069,11 +813,8 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_AutoFlag_WhenThresholdExceeded() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         // 21 attestations from 21 different users — exceeds MIN_ATTESTATIONS_FOR_AUTO_FLAG (20)
         _createAttesters(subId, 100, 21, 365 days);
@@ -1091,11 +832,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_AutoFlag_DoesNotTrigger_BelowMinAttestations() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         // Only 3 attestations — below the MIN_ATTESTATIONS_FOR_AUTO_FLAG (20)
         _createAttesters(subId, 200, 3, 365 days);
@@ -1116,15 +854,10 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_FlagToken_IncrementsFlagCount_ButNotIsFlagged() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.flagToken(subId);
@@ -1135,15 +868,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_FlagToken_EmitsEvent() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.expectEmit(true, true, false, true);
         emit Events.TokenFlagged(subId, bob, 1);
@@ -1153,18 +881,11 @@ contract IdentitySystemTest is Test {
     }
 
     function test_FlagToken_MultipleFlaggers() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(charlie);
-        identitySystem.createRootIdentity("Charlie");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        _root(charlie, "Charlie");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.flagToken(subId);
@@ -1178,15 +899,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_FlagToken_DuplicateByRoot() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         identitySystem.flagToken(subId);
@@ -1197,11 +913,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_FlagToken_NoRoot() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         vm.prank(charlie);
         vm.expectRevert(Errors.NoRootIdentity.selector);
@@ -1209,11 +922,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_FlagToken_NotToken() public {
-        vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        uint256 rootId = _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
 
         vm.prank(bob);
@@ -1222,13 +932,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_FlagToken_Expired() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
 
@@ -1240,12 +946,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_FlagToken_SelfFlag() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         vm.prank(alice);
         vm.expectRevert(Errors.CannotFlagOwnToken.selector);
@@ -1253,17 +956,10 @@ contract IdentitySystemTest is Test {
     }
 
     function test_ManualFlag_DoesNotBlock_AutoFlag() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(charlie);
-        identitySystem.createRootIdentity("Charlie");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        _root(charlie, "Charlie");
+        uint256 subId = _token(alice);
 
         // 20 attestations from 20 different users (meets minimum floor)
         _createAttesters(subId, 300, 20, 365 days);
@@ -1289,12 +985,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_FlagToken_RootTooNew() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
 
         vm.prank(bob);
         vm.expectRevert(Errors.RootTooNew.selector);
@@ -1303,15 +996,14 @@ contract IdentitySystemTest is Test {
         _ageRoots();
         vm.prank(bob);
         identitySystem.flagToken(subId);
+
         (, , , , , , , , , , , uint256 flagCount, ) = identitySystem.tokens(subId);
         assertEq(flagCount, 1);
     }
 
     function test_AutoFlag_FreshRootsCannotForceFlag() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         // 20 roots made on the spot attest and 7 revoke: enough to flag if they counted
         for (uint160 i = 0; i < 20; i++) {
@@ -1331,16 +1023,13 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevokeAttestation_NotCountedIfAttestedWhileNew() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        uint256 subId = _token(alice);
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
         _ageRoots();
+
         vm.prank(bob);
         identitySystem.revokeAttestation(subId);
 
@@ -1354,18 +1043,11 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_CachedCounters_TrackAttestationsAccurately() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        vm.prank(charlie);
-        identitySystem.createRootIdentity("Charlie");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
+        _root(charlie, "Charlie");
         _ageRoots();
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        uint256 subId = _token(alice);
 
         // Bob attests
         vm.prank(bob);
@@ -1400,9 +1082,7 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_RevertIf_CreateToken_InvalidExpiry() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        _root(alice, "Alice");
         vm.warp(1000);
 
         vm.prank(alice);
@@ -1415,9 +1095,7 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_CreateProfile() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        _root(alice, "Alice");
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice Nakamoto",
             username: "alice",
@@ -1442,70 +1120,28 @@ contract IdentitySystemTest is Test {
     }
 
     function test_CreateProfile_MinimalFields() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        _root(alice, "Alice");
 
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
         assertEq(identitySystem.ownerOf(profileId), alice);
     }
 
     function test_RevertIf_CreateProfile_NoName() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileNameRequired.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("", "alice"), _noLinks());
     }
 
     function test_RevertIf_CreateProfile_UsernameTooShort() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "ab",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileUsernameTooShort.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Alice", "ab"), _noLinks());
     }
 
     // =========================================================================
@@ -1513,146 +1149,51 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_RevertIf_CreateProfile_UsernameTooLong() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "abcdefghijklmnopqrstuvwxyz0123456789",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileUsernameTooLong.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Alice", "abcdefghijklmnopqrstuvwxyz0123456789"), _noLinks());
     }
 
     function test_RevertIf_CreateProfile_InvalidUsernameChar() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice!",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        _root(alice, "Alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.InvalidProfileUsernameChar.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Alice", "alice!"), _noLinks());
     }
 
     function test_RevertIf_CreateProfile_UsernameTaken() public {
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        vm.prank(alice);
-        profileSystem.createProfile(meta, _noLinks());
-
-        meta.name = "Bob";
         // same username "alice"
-
         vm.prank(bob);
         vm.expectRevert(Errors.ProfileUsernameTaken.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Bob", "alice"), _noLinks());
     }
 
     function test_RevertIf_CreateProfile_AlreadyMinted() public {
+        _root(alice, "Alice");
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        vm.prank(alice);
-        profileSystem.createProfile(meta, _noLinks());
-
-        meta.username = "alice2";
+        profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Alice", "alice2"), _noLinks());
     }
 
     function test_ProfileTransfer_PreventsRecipientDuplicateProfile() public {
         // Alice creates root + profile
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        uint256 aliceProfileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
         vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        DataTypes.ProfileMetadata memory metaAlice = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        DataTypes.ProfileMetadata memory metaBob = DataTypes.ProfileMetadata({
-            name: "Bob",
-            username: "bob_x",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        vm.prank(alice);
-        uint256 aliceProfileId = profileSystem.createProfile(metaAlice, _noLinks());
-
-        vm.prank(bob);
-        uint256 bobProfileId = profileSystem.createProfile(metaBob, _noLinks());
+        profileSystem.createProfile(_meta("Bob", "bob_x"), _noLinks());
 
         // Alice tries to transfer her profile to Bob who already has one
         vm.prank(alice);
@@ -1661,24 +1202,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_ProfileTransfer_Success() public {
+        _root(alice, "Alice");
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
         // Transfer to bob (who has no profile)
         vm.prank(alice);
@@ -1693,65 +1219,30 @@ contract IdentitySystemTest is Test {
     }
 
     function test_ProfileMintGuard_PersistsAfterTransfer() public {
+        _root(alice, "Alice");
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
         // Transfer away
         vm.prank(alice);
         identitySystem.transferToken(profileId, bob);
 
         // Alice tries to mint a new profile — should be permanently blocked
-        meta.username = "alice2";
-
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Alice", "alice2"), _noLinks());
 
         // Bob tries to mint a profile — should be blocked because he already holds one
-        meta.username = "bob";
         vm.prank(bob);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
-        profileSystem.createProfile(meta, _noLinks());
+        profileSystem.createProfile(_meta("Alice", "bob"), _noLinks());
     }
 
     function test_ProfileAttestation() public {
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
-        vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
         // Bob can attest Alice's profile token
         vm.prank(bob);
@@ -1762,28 +1253,11 @@ contract IdentitySystemTest is Test {
     }
 
     function test_ProfileFlagging() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(alice, "Alice");
+        _root(bob, "Bob");
         _ageRoots();
-
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
-
         vm.prank(alice);
-        uint256 profileId = profileSystem.createProfile(meta, _noLinks());
+        uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
         // Bob can flag Alice's profile token
         vm.prank(bob);
@@ -1794,9 +1268,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetProfile() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        _root(alice, "Alice");
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice Nakamoto",
             username: "alice",
@@ -1809,11 +1281,11 @@ contract IdentitySystemTest is Test {
             ens: "alice.eth",
             avatarId: "a07"
         });
-
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
         DataTypes.ProfileMetadata memory stored = profileSystem.getProfile(profileId);
+
         assertEq(stored.name, "Alice Nakamoto");
         assertEq(stored.username, "alice");
         assertEq(stored.nationality, "US");
@@ -1831,9 +1303,7 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function test_CreateProfile_WithLinks() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        _root(alice, "Alice");
         DataTypes.LinkUpdate[] memory links = new DataTypes.LinkUpdate[](2);
         links[0] = DataTypes.LinkUpdate(0, "Farcaster", "https://warpcast.com/alice");
         links[1] = DataTypes.LinkUpdate(1, "Blog", "https://alice.blog");
@@ -1850,8 +1320,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_CreateProfile_MoreThanSixLinks() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
+
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(10));
 
@@ -1863,9 +1333,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_SingleField() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-
+        _root(alice, "Alice");
         DataTypes.ProfileMetadata memory meta = _meta("Alice", "alice");
         meta.github = "https://github.com/alice";
         meta.discord = "alice#1234";
@@ -1885,8 +1353,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_MultipleFieldsAndLinks() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(
             _meta("Alice", "alice"),
@@ -1919,8 +1386,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_ClearMiddleLinkLeavesGap() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
 
@@ -1936,13 +1402,12 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_FillGap() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
-
         vm.prank(alice);
         profileSystem.updateProfile(profileId, _noFields(), _link(1, "", ""));
+
         vm.prank(alice);
         profileSystem.updateProfile(profileId, _noFields(), _link(1, "Blog", "https://alice.blog"));
 
@@ -1953,8 +1418,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_FillGapAndAppend() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
         vm.prank(alice);
@@ -1975,8 +1439,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_ClearTailTrimsTrailingGaps() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
 
@@ -1993,8 +1456,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetLinks_Pagination() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(5));
 
@@ -2023,12 +1485,13 @@ contract IdentitySystemTest is Test {
 
     function test_GetLinks_UnknownProfile() public view {
         (DataTypes.ProfileLink[] memory page, uint256 total) = profileSystem.getLinks(12345, 0, 10);
+
         assertEq(page.length, 0);
         assertEq(total, 0);
     }
 
     function test_UpdateProfile_EmitsEvent() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
 
         vm.expectEmit(true, false, false, true);
         emit Events.ProfileUpdated(profileId);
@@ -2038,7 +1501,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_UsernameUnchanged() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
 
         // Touch every editable field; none of them may affect the username
         DataTypes.FieldUpdate[] memory fields = new DataTypes.FieldUpdate[](9);
@@ -2056,8 +1519,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_UpdateProfile_AfterTransfer() public {
-        uint256 profileId = _createProfile(alice, "alice");
-
+        uint256 profileId = _profile(alice, "alice");
         vm.prank(alice);
         identitySystem.transferToken(profileId, bob);
 
@@ -2071,8 +1533,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_BurnProfile_HidesLinks() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
 
@@ -2087,7 +1548,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_NotOwner() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotProfileOwner.selector);
@@ -2095,7 +1556,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_EmptyName() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.ProfileNameRequired.selector);
@@ -2103,7 +1564,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_LinkIndexPastEnd() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
 
         // Appends must land exactly at the end of the list
         vm.prank(alice);
@@ -2112,7 +1573,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_AppendEmptyLink() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
 
         vm.prank(alice);
         vm.expectRevert(Errors.InvalidLinkIndex.selector);
@@ -2120,8 +1581,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_AppendsOutOfOrder() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));
 
@@ -2135,10 +1595,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_NoProfile() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        uint256 subId = _token(alice);
 
         // A SUB token the caller owns is not a profile
         vm.prank(alice);
@@ -2152,8 +1610,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_BurnedProfile() public {
-        uint256 profileId = _createProfile(alice, "alice");
-
+        uint256 profileId = _profile(alice, "alice");
         vm.prank(alice);
         identitySystem.burnToken(profileId);
 
@@ -2169,8 +1626,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_UpdateProfile_InvalidField() public {
-        uint256 profileId = _createProfile(alice, "alice");
-
+        uint256 profileId = _profile(alice, "alice");
         RawFieldUpdate[] memory fields = new RawFieldUpdate[](1);
         fields[0] = RawFieldUpdate(9, "username-takeover"); // one past ProfileField.AVATAR
 
@@ -2178,6 +1634,7 @@ contract IdentitySystemTest is Test {
         (bool ok, ) = address(profileSystem).call(
             abi.encodeWithSelector(ProfileSystem.updateProfile.selector, profileId, fields, _noLinks())
         );
+
         assertFalse(ok);
         assertEq(profileSystem.getProfile(profileId).username, "alice");
     }
@@ -2187,10 +1644,8 @@ contract IdentitySystemTest is Test {
     // =========================================================================
 
     function _attestedToken(uint256 count) internal returns (uint256 tokenId) {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        tokenId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        tokenId = _token(alice);
         _createAttesters(tokenId, uint160(0x100), count, 365 days);
     }
 
@@ -2237,13 +1692,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetAttestersDetailed_ResolvesRootIdentity() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        uint256 tokenId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob The Attester");
+        _root(alice, "Alice");
+        uint256 tokenId = _token(alice);
+        _root(bob, "Bob The Attester");
         vm.prank(bob);
         identitySystem.attestToken(tokenId, 365 days);
 
@@ -2266,28 +1717,13 @@ contract IdentitySystemTest is Test {
     ///      attester holds one must make no difference to what this view
     ///      returns -- the name shown is always the root display name.
     function test_GetAttestersDetailed_IgnoresAttesterProfile() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        uint256 tokenId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Bob Profile Name",
-            username: "bob",
-            nationality: "US",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        _root(alice, "Alice");
+        uint256 tokenId = _token(alice);
+        _root(bob, "Bob");
+        DataTypes.ProfileMetadata memory meta = _meta("Bob Profile Name", "bob");
+        meta.nationality = "US";
         vm.prank(bob);
         profileSystem.createProfile(meta, _noLinks());
-
         vm.prank(bob);
         identitySystem.attestToken(tokenId, 365 days);
 
@@ -2299,7 +1735,6 @@ contract IdentitySystemTest is Test {
 
     function test_GetAttestersDetailed_ActiveOnlyExcludesRevoked() public {
         uint256 tokenId = _attestedToken(3);
-
         address revoker = address(uint160(0x100));
         vm.prank(revoker);
         identitySystem.revokeAttestation(tokenId);
@@ -2320,7 +1755,6 @@ contract IdentitySystemTest is Test {
 
     function test_GetAttestersDetailed_ActiveOnlyExcludesExpired() public {
         uint256 tokenId = _attestedToken(2);
-
         vm.warp(block.timestamp + 366 days);
 
         (, uint256 activeTotal) = identitySystem.getAttestersDetailed(tokenId, true, 0, 10);
@@ -2332,7 +1766,6 @@ contract IdentitySystemTest is Test {
 
     function test_GetAttestersDetailed_PagesOverFilteredSet() public {
         uint256 tokenId = _attestedToken(4);
-
         vm.prank(address(uint160(0x100)));
         identitySystem.revokeAttestation(tokenId);
 
@@ -2367,13 +1800,9 @@ contract IdentitySystemTest is Test {
     ///      view: the address it returns must resolve to that wallet's own
     ///      tokens and root identity, without touching their profile.
     function test_GetAttestersDetailed_WalletResolvesToAttestersOwnTokens() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        uint256 aliceToken = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-
-        vm.prank(bob);
-        identitySystem.createRootIdentity("John");
+        _root(alice, "Alice");
+        uint256 aliceToken = _token(alice);
+        _root(bob, "John");
         vm.prank(bob);
         uint256 bobToken = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
         vm.prank(bob);
@@ -2397,23 +1826,12 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetProfileTokenId() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
+        _root(alice, "Alice");
 
         assertEq(identitySystem.getProfileTokenId(alice), 0);
 
-        DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
-            name: "Alice",
-            username: "alice",
-            nationality: "US",
-            github: "",
-            email: "",
-            discord: "",
-            xDotCom: "",
-            websitePortfolioLink: "",
-            ens: "",
-            avatarId: ""
-        });
+        DataTypes.ProfileMetadata memory meta = _meta("Alice", "alice");
+        meta.nationality = "US";
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(meta, _noLinks());
 
@@ -2421,10 +1839,8 @@ contract IdentitySystemTest is Test {
     }
 
     function test_GetProfileTokenId_IgnoresRootAndSubTokens() public {
-        vm.prank(alice);
-        identitySystem.createRootIdentity("Alice");
-        vm.prank(alice);
-        identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+        _root(alice, "Alice");
+        _token(alice);
 
         assertEq(identitySystem.getProfileTokenId(alice), 0);
     }
@@ -2435,11 +1851,9 @@ contract IdentitySystemTest is Test {
 
     // Pinned values: dit/lib/tokenId.ts mirrors this formula and checks the same ids
     function test_TokenIds_PerTypeSerials() public {
-        uint256 profileId = _createProfile(alice, "alice");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
-        vm.prank(bob);
-        uint256 bobRootId = identitySystem.createRootIdentity("Bob");
+        uint256 profileId = _profile(alice, "alice");
+        uint256 subId = _token(alice);
+        uint256 bobRootId = _root(bob, "Bob");
 
         assertEq(identitySystem.ownerToRootId(alice), 16180339887);
         assertEq(bobRootId, 12360679774);
@@ -2467,8 +1881,7 @@ contract IdentitySystemTest is Test {
     }
 
     function test_RevertIf_AttestToken_UnknownId() public {
-        vm.prank(bob);
-        identitySystem.createRootIdentity("Bob");
+        _root(bob, "Bob");
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotToken.selector);
@@ -2480,8 +1893,9 @@ contract IdentitySystemTest is Test {
     }
 
     function test_TokenURI() public {
-        uint256 profileId = _createProfile(alice, "alice");
+        uint256 profileId = _profile(alice, "alice");
         string memory json = '{"name":"DIT Profile pf-2463525193"}';
+
         assertEq(
             identitySystem.tokenURI(profileId),
             string.concat("data:application/json;base64,", Base64.encode(bytes(json)))
