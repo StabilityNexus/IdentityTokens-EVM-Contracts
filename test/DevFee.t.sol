@@ -194,6 +194,31 @@ contract DevFeeTest is Test {
         identitySystem.withdrawDevFees();
     }
 
+    // Nothing in ProfileSystem, so the failing transfer is IdentitySystem's own
+    function test_RevertIf_WithdrawDevFees_ReceiverRejectsOwnShare() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity{ value: DONATION }("alice");
+        address rejecter = address(new RejectsEther());
+        vm.prank(dev);
+        identitySystem.setDevFeeReceiver(rejecter);
+
+        vm.expectRevert(Errors.DevFeeTransferFailed.selector);
+        vm.prank(dev);
+        identitySystem.withdrawDevFees();
+    }
+
+    function test_WithdrawDevFees_BeforeProfileSystemSet() public {
+        IdentitySystem standalone = new IdentitySystem(dev, receiver, DEV_FEE);
+        vm.prank(alice);
+        standalone.createRootIdentity{ value: DONATION }("alice");
+
+        vm.prank(dev);
+        standalone.withdrawDevFees();
+
+        assertEq(receiver.balance, DONATION);
+        assertEq(address(standalone).balance, 0);
+    }
+
     function test_RevertIf_SweepDevFees_NotIdentitySystem() public {
         _collectDonations();
 

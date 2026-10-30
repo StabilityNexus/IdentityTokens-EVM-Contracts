@@ -29,6 +29,7 @@ IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockc
 - **`test/` — Automated Test Suite**
   - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 119 unit, integration, and fuzz tests covering all contract flows and edge cases.
   - [`test/DevFee.t.sol`](/contracts/test/DevFee.t.sol): Donations, withdrawal, dev-only settings and the two-step dev handover.
+  - [`test/Deploy.t.sol`](/contracts/test/Deploy.t.sol): Runs `Deploy` on Anvil and checks `HelperConfig` reads the deployer key and dev-fee settings from the environment on other chains.
   - [`test/EvmCompat.t.sol`](/contracts/test/EvmCompat.t.sol): Fails if the deployed code uses an opcode Ethereum Classic lacks (Cancun's `MCOPY`, `TLOAD`, `TSTORE`, `BLOBHASH`, `BLOBBASEFEE`).
 
 - **`docs/` — System Workflows**
