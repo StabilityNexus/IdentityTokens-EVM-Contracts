@@ -1,6 +1,6 @@
 # Dev fee (donation to AOSSIE): plan
 
-Status: implemented on `feat/dev-fee` in `contracts` and `dit`, not committed and not deployed. Updated 2026-10-25.
+Status: implemented on `feat/dev-fee` in `contracts` and `dit`, not committed and not deployed. Updated 2026-10-30.
 The owner-facing guide is [`DEV_FEE_OWNER_GUIDE.md`](DEV_FEE_OWNER_GUIDE.md).
 
 ## 1. Goal
@@ -41,7 +41,7 @@ Every user action in dit can carry a small donation to AOSSIE (a non-profit), ab
 - Ethereum Classic compatibility:
   - OpenZeppelin 5.5 only compiles with `evm_version = cancun`.
   - ETC stops at Shanghai. `test/EvmCompat.t.sol` fails if the deployed code ever contains a Cancun-only opcode.
-- Size: `IdentitySystem` 18,624 bytes (+1,075), 5,952 under the limit.
+- Size: `IdentitySystem` 18,818 bytes (+1,076), 5,758 under the limit.
 
 ## 4. Frontend (dit)
 
@@ -72,7 +72,7 @@ Every user action in dit can carry a small donation to AOSSIE (a non-profit), ab
 ## 5. Verified
 
 - **Contracts:**
-  - `forge test`: 138 passed (115 existing, 22 dev-fee, 1 EVM compatibility).
+  - `forge test`: 146 passed (119 existing, 24 dev-fee, 2 deploy script, 1 EVM compatibility).
   - Prettier check clean; `forge build --sizes` OK.
   - Slither: 17 findings vs 15 on `main`. The 2 new ones are missing zero-address checks that are intended: `proposeDev(address(0))` cancels, and `sweepDevFees` is only called by IdentitySystem with the receiver.
 - **ETC dry run:**
