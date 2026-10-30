@@ -1121,6 +1121,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -1139,6 +1140,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -1159,6 +1161,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(charlie);
         identitySystem.createRootIdentity("Charlie");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -1180,6 +1183,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -1210,6 +1214,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(bob);
         vm.expectRevert(Errors.NotToken.selector);
@@ -1222,6 +1227,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
@@ -1236,6 +1242,7 @@ contract IdentitySystemTest is Test {
     function test_RevertIf_FlagToken_SelfFlag() public {
         vm.prank(alice);
         identitySystem.createRootIdentity("Alice");
+        _ageRoots();
 
         vm.prank(alice);
         uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
@@ -1279,6 +1286,25 @@ contract IdentitySystemTest is Test {
         (, , , , , , , , , , bool isFlaggedAfter, uint256 flagCountAfter, ) = identitySystem.tokens(subId);
         assertTrue(isFlaggedAfter); // NOW isFlagged is true (auto-flag consensus)
         assertEq(flagCountAfter, 2); // manual (1) + auto (1) = 2
+    }
+
+    function test_RevertIf_FlagToken_RootTooNew() public {
+        vm.prank(alice);
+        identitySystem.createRootIdentity("Alice");
+        vm.prank(bob);
+        identitySystem.createRootIdentity("Bob");
+        vm.prank(alice);
+        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
+
+        vm.prank(bob);
+        vm.expectRevert(Errors.RootTooNew.selector);
+        identitySystem.flagToken(subId);
+
+        _ageRoots();
+        vm.prank(bob);
+        identitySystem.flagToken(subId);
+        (, , , , , , , , , , , uint256 flagCount, ) = identitySystem.tokens(subId);
+        assertEq(flagCount, 1);
     }
 
     function test_AutoFlag_FreshRootsCannotForceFlag() public {
@@ -1741,6 +1767,7 @@ contract IdentitySystemTest is Test {
 
         vm.prank(bob);
         identitySystem.createRootIdentity("Bob");
+        _ageRoots();
 
         DataTypes.ProfileMetadata memory meta = DataTypes.ProfileMetadata({
             name: "Alice",

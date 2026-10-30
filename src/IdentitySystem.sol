@@ -274,7 +274,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         return ownerToRootId[msg.sender];
     }
 
-    function _isEstablishedRoot(uint256 rootId) internal view override returns (bool) {
+    function _isEstablishedRoot(uint256 rootId) internal view override(AttestationModule, FlagModule) returns (bool) {
         return block.timestamp >= rootIdentities[rootId].createdAt + MIN_ROOT_AGE;
     }
 
