@@ -68,7 +68,8 @@ abstract contract AttestationModule {
             _attesterTracked[attesterRootId][tokenId] = true;
         }
 
-        if (!_attesterCounted[attesterRootId][tokenId]) {
+        // Young roots can attest, but only established ones count toward auto-flag
+        if (!_attesterCounted[attesterRootId][tokenId] && _isEstablishedRoot(attesterRootId)) {
             _attesterCounted[attesterRootId][tokenId] = true;
             _incrementTotalAttestationCount(tokenId);
         }
@@ -96,7 +97,7 @@ abstract contract AttestationModule {
 
         _hasActiveAttestation[attesterRootId][tokenId] = false;
 
-        if (!_revokerCounted[attesterRootId][tokenId]) {
+        if (_attesterCounted[attesterRootId][tokenId] && !_revokerCounted[attesterRootId][tokenId]) {
             _revokerCounted[attesterRootId][tokenId] = true;
             _incrementRevokedCount(tokenId);
         }
@@ -209,4 +210,6 @@ abstract contract AttestationModule {
     function _getTokenValidUntil(uint256 id) internal view virtual returns (uint256);
 
     function _tokenExists(uint256 id) internal view virtual returns (bool);
+
+    function _isEstablishedRoot(uint256 rootId) internal view virtual returns (bool);
 }
