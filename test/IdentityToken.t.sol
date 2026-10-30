@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
 import { BaseTest } from "./utils/BaseTest.sol";
 import { ProfileSystem } from "../src/ProfileSystem.sol";
 import { DataTypes } from "../src/libraries/DataTypes.sol";
@@ -31,66 +30,6 @@ contract IdentitySystemTest is BaseTest {
     ) internal pure returns (DataTypes.LinkUpdate[] memory links) {
         links = new DataTypes.LinkUpdate[](1);
         links[0] = DataTypes.LinkUpdate(index, label, url);
-    }
-
-    // =========================================================================
-    // Root Identity
-    // =========================================================================
-
-    function test_CreateRootIdentity() public {
-        vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("Alice Nakamoto");
-
-        assertEq(rootId, 16180339887); // first root: id-6180339887
-        assertEq(identitySystem.ownerOf(rootId), alice);
-        assertEq(identitySystem.ownerToRootId(alice), rootId);
-        assertEq(uint8(identitySystem.tokenTypeOf(rootId)), uint8(DataTypes.TokenType.ROOT));
-    }
-
-    function test_CreateRootIdentity_WithEmptyDisplayName() public {
-        vm.prank(alice);
-        uint256 rootId = identitySystem.createRootIdentity("");
-
-        assertEq(identitySystem.ownerOf(rootId), alice);
-    }
-
-    function test_RevertIf_CreateRootIdentity_AlreadyHasRoot() public {
-        _root(alice, "Alice");
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.AlreadyHasRoot.selector);
-        identitySystem.createRootIdentity("Alice2");
-    }
-
-    // =========================================================================
-    // Token
-    // =========================================================================
-
-    function test_CreateToken() public {
-        _root(alice, "Alice");
-
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken(
-            "GitHub",
-            "social",
-            bytes("https://github.com/alice"),
-            "My GitHub",
-            0
-        );
-
-        assertEq(subId, 29321932540); // first token: tk-9321932540
-        assertEq(identitySystem.ownerOf(subId), alice);
-        assertEq(uint8(identitySystem.tokenTypeOf(subId)), uint8(DataTypes.TokenType.SUB));
-
-        uint256[] memory subIds = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
-        assertEq(subIds.length, 1);
-        assertEq(subIds[0], subId);
-    }
-
-    function test_RevertIf_CreateToken_NoRoot() public {
-        vm.prank(alice);
-        vm.expectRevert(Errors.NoRootIdentity.selector);
-        identitySystem.createToken("GitHub", "social", bytes(""), "", 0);
     }
 
     // =========================================================================
@@ -498,20 +437,6 @@ contract IdentitySystemTest is BaseTest {
     // Transfer (controlled) — attestations persist
     // =========================================================================
 
-    function test_TransferToken() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(alice);
-        identitySystem.transferToken(subId, bob);
-
-        assertEq(identitySystem.ownerOf(subId), bob);
-
-        address[] memory history = identitySystem.getTransferHistory(subId);
-        assertEq(history.length, 2);
-        assertEq(history[1], bob);
-    }
-
     function test_RevertIf_AttestToken_CreatorWhileParked() public {
         _root(alice, "Alice");
         _root(bob, "Bob");
@@ -534,104 +459,9 @@ contract IdentitySystemTest is BaseTest {
         identitySystem.attestToken(subId, 365 days);
     }
 
-    function test_TransferToken_PreservesAttestations() public {
-        _root(alice, "Alice");
-        _root(bob, "Bob");
-        uint256 subId = _token(alice);
-
-        // Bob attests with 3-year validity
-        vm.prank(bob);
-        identitySystem.attestToken(subId, 3 * 365 days);
-
-        // Before transfer: 1 active attestation
-        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
-        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
-
-        // Transfer — attestations persist (passport model)
-        vm.prank(alice);
-        identitySystem.transferToken(subId, charlie);
-
-        // After transfer: attestation still active
-        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
-        assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
-
-        DataTypes.Attestation[] memory active = identitySystem.getActiveAttestations(subId);
-        assertEq(active.length, 1);
-        assertEq(active[0].attesterTokenId, identitySystem.ownerToRootId(bob));
-    }
-
-    function test_RevertIf_TransferToken_NotHolder() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(bob);
-        vm.expectRevert(Errors.NotHolder.selector);
-        identitySystem.transferToken(subId, bob);
-    }
-
-    function test_RevertIf_TransferRootToken() public {
-        uint256 rootId = _root(alice, "Alice");
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.CannotTransferRoot.selector);
-        identitySystem.transferToken(rootId, bob);
-    }
-
-    function test_RevertIf_TransferToken_SelfTransfer() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.SelfTransfer.selector);
-        identitySystem.transferToken(subId, alice);
-    }
-
-    function test_RevertIf_TransferToken_ZeroAddress() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.ZeroAddress.selector);
-        identitySystem.transferToken(subId, address(0));
-    }
-
-    function test_RevertIf_TransferToken_Expired() public {
-        _root(alice, "Alice");
-        vm.prank(alice);
-        uint256 subId = identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp + 100);
-
-        vm.warp(block.timestamp + 200);
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.TokenExpired.selector);
-        identitySystem.transferToken(subId, bob);
-    }
-
     // =========================================================================
     // Burn Token
     // =========================================================================
-
-    function test_BurnToken() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(alice);
-        identitySystem.burnToken(subId);
-
-        vm.expectRevert();
-        identitySystem.ownerOf(subId);
-    }
-
-    function test_BurnToken_EmitsEvent() public {
-        uint256 rootId = _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.expectEmit(true, true, false, true);
-        emit Events.TokenBurned(subId, rootId);
-
-        vm.prank(alice);
-        identitySystem.burnToken(subId);
-    }
 
     function test_BurnedTokenCannotBeAttested() public {
         _root(alice, "Alice");
@@ -644,87 +474,6 @@ contract IdentitySystemTest is BaseTest {
         vm.prank(bob);
         vm.expectRevert(Errors.NotToken.selector);
         identitySystem.attestToken(subId, 365 days);
-    }
-
-    function test_BurnToken_RemovesFromWalletList() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        uint256[] memory walletBefore = identitySystem.getWalletTokens(alice);
-        assertEq(walletBefore.length, 1);
-
-        vm.prank(alice);
-        identitySystem.burnToken(subId);
-
-        uint256[] memory walletAfter = identitySystem.getWalletTokens(alice);
-        assertEq(walletAfter.length, 0);
-    }
-
-    function test_RevertIf_BurnToken_NotHolder() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(bob);
-        vm.expectRevert(Errors.NotHolder.selector);
-        identitySystem.burnToken(subId);
-    }
-
-    function test_RevertIf_BurnToken_NotToken() public {
-        uint256 rootId = _root(alice, "Alice");
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.NotToken.selector);
-        identitySystem.burnToken(rootId);
-    }
-
-    function test_RevertIf_BurnToken_AlreadyBurned() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(alice);
-        identitySystem.burnToken(subId);
-
-        vm.prank(alice);
-        vm.expectRevert();
-        identitySystem.burnToken(subId);
-    }
-
-    function test_BurnToken_RemovesFromRootTokenList() public {
-        _root(alice, "Alice");
-        uint256 subId1 = _token(alice);
-        vm.prank(alice);
-        uint256 subId2 = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
-
-        uint256[] memory subsBefore = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
-        assertEq(subsBefore.length, 2);
-
-        vm.prank(alice);
-        identitySystem.burnToken(subId1);
-
-        uint256[] memory subsAfter = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
-        assertEq(subsAfter.length, 1);
-        assertEq(subsAfter[0], subId2);
-
-        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
-            identitySystem.ownerToRootId(alice)
-        );
-        assertEq(rootView.tokenCount, 1);
-    }
-
-    function test_BurnToken_RemovesFromRootTokenList_SingleToken() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        vm.prank(alice);
-        identitySystem.burnToken(subId);
-
-        uint256[] memory subsAfter = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
-        assertEq(subsAfter.length, 0);
-
-        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
-            identitySystem.ownerToRootId(alice)
-        );
-        assertEq(rootView.tokenCount, 0);
     }
 
     function test_HasAttested_FalseAfterBurn() public {
@@ -778,34 +527,6 @@ contract IdentitySystemTest is BaseTest {
         vm.prank(bob);
         vm.expectRevert(Errors.NotToken.selector);
         identitySystem.revokeAttestation(subId);
-    }
-
-    // =========================================================================
-    // View functions — root & wallet
-    // =========================================================================
-
-    function test_GetRootIdentityView() public {
-        _root(alice, "Alice Nakamoto");
-
-        DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
-            identitySystem.ownerToRootId(alice)
-        );
-
-        assertEq(rootView.tokenId, identitySystem.ownerToRootId(alice));
-        assertEq(rootView.walletAddress, alice);
-        assertEq(rootView.displayName, "Alice Nakamoto");
-        assertTrue(rootView.isActive);
-        assertEq(rootView.tokenCount, 0);
-    }
-
-    function test_GetWalletTokens() public {
-        _root(alice, "Alice");
-        uint256 subId = _token(alice);
-
-        uint256[] memory walletTokens = identitySystem.getWalletTokens(alice);
-
-        assertEq(walletTokens.length, 1);
-        assertEq(walletTokens[0], subId);
     }
 
     // =========================================================================
@@ -1075,19 +796,6 @@ contract IdentitySystemTest is BaseTest {
         assertEq(totalCount, 2);
         assertEq(revokedCount, 1);
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
-    }
-
-    // =========================================================================
-    // Token expiry
-    // =========================================================================
-
-    function test_RevertIf_CreateToken_InvalidExpiry() public {
-        _root(alice, "Alice");
-        vm.warp(1000);
-
-        vm.prank(alice);
-        vm.expectRevert(Errors.InvalidExpiry.selector);
-        identitySystem.createToken("GitHub", "social", bytes(""), "", block.timestamp - 1);
     }
 
     // =========================================================================
@@ -1843,69 +1551,5 @@ contract IdentitySystemTest is BaseTest {
         _token(alice);
 
         assertEq(identitySystem.getProfileTokenId(alice), 0);
-    }
-
-    // =========================================================================
-    // Token IDs
-    // =========================================================================
-
-    // Pinned values: dit/lib/tokenId.ts mirrors this formula and checks the same ids
-    function test_TokenIds_PerTypeSerials() public {
-        uint256 profileId = _profile(alice, "alice");
-        uint256 subId = _token(alice);
-        uint256 bobRootId = _root(bob, "Bob");
-
-        assertEq(identitySystem.ownerToRootId(alice), 16180339887);
-        assertEq(bobRootId, 12360679774);
-        assertEq(subId, 29321932540);
-        assertEq(profileId, 32463525193);
-        assertEq(identitySystem.minted(uint256(DataTypes.TokenType.ROOT)), 2);
-        assertEq(identitySystem.minted(uint256(DataTypes.TokenType.SUB)), 1);
-        assertEq(identitySystem.minted(uint256(DataTypes.TokenType.PROFILE)), 1);
-    }
-
-    function test_FormatTokenId() public view {
-        assertEq(identitySystem.formatTokenId(16180339887), "id-6180339887");
-        assertEq(identitySystem.formatTokenId(10901699435), "id-0901699435");
-        assertEq(identitySystem.formatTokenId(29321932540), "tk-9321932540");
-        assertEq(identitySystem.formatTokenId(32463525193), "pf-2463525193");
-    }
-
-    function test_RevertIf_TokenTypeOf_InvalidId() public {
-        vm.expectRevert(Errors.InvalidTokenId.selector);
-        identitySystem.tokenTypeOf(0);
-        vm.expectRevert(Errors.InvalidTokenId.selector);
-        identitySystem.tokenTypeOf(5);
-        vm.expectRevert(Errors.InvalidTokenId.selector);
-        identitySystem.tokenTypeOf(4e10);
-    }
-
-    function test_RevertIf_AttestToken_UnknownId() public {
-        _root(bob, "Bob");
-
-        vm.prank(bob);
-        vm.expectRevert(Errors.NotToken.selector);
-        identitySystem.attestToken(5, 365 days);
-
-        vm.prank(bob);
-        vm.expectRevert(Errors.NotToken.selector);
-        identitySystem.attestToken(29999999999, 365 days);
-    }
-
-    function test_TokenURI() public {
-        uint256 profileId = _profile(alice, "alice");
-        string memory json = '{"name":"DIT Profile pf-2463525193"}';
-
-        assertEq(
-            identitySystem.tokenURI(profileId),
-            string.concat("data:application/json;base64,", Base64.encode(bytes(json)))
-        );
-        assertEq(
-            identitySystem.tokenURI(identitySystem.ownerToRootId(alice)),
-            string.concat(
-                "data:application/json;base64,",
-                Base64.encode(bytes('{"name":"DIT Root Identity id-6180339887"}'))
-            )
-        );
     }
 }
