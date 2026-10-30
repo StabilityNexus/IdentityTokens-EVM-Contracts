@@ -2,10 +2,10 @@
 pragma solidity ^0.8.24;
 
 import { Test } from "forge-std/Test.sol";
-import { Deploy } from "../script/Deploy.s.sol";
-import { HelperConfig } from "../script/HelperConfig.s.sol";
-import { IdentitySystem } from "../src/IdentitySystem.sol";
-import { ProfileSystem } from "../src/ProfileSystem.sol";
+import { Deploy } from "../../script/Deploy.s.sol";
+import { HelperConfig } from "../../script/HelperConfig.s.sol";
+import { IdentitySystem } from "../../src/IdentitySystem.sol";
+import { ProfileSystem } from "../../src/ProfileSystem.sol";
 
 contract DeployTest is Test {
     // Tests run on Anvil's chain id, so this uses the fixed local accounts

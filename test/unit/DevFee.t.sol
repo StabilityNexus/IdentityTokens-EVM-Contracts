@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 import { Test } from "forge-std/Test.sol";
-import { IdentitySystem } from "../src/IdentitySystem.sol";
-import { ProfileSystem } from "../src/ProfileSystem.sol";
-import { DataTypes } from "../src/libraries/DataTypes.sol";
-import { Errors } from "../src/libraries/Errors.sol";
-import { Events } from "../src/libraries/Events.sol";
+import { IdentitySystem } from "../../src/IdentitySystem.sol";
+import { ProfileSystem } from "../../src/ProfileSystem.sol";
+import { DataTypes } from "../../src/libraries/DataTypes.sol";
+import { Errors } from "../../src/libraries/Errors.sol";
+import { Events } from "../../src/libraries/Events.sol";
 
 // A receiver with no receive/fallback, so any ETH sent to it reverts
 contract RejectsEther {}
