@@ -291,6 +291,10 @@ contract IdentitySystem is ERC721, DevFeeModule, AttestationModule, FlagModule {
         return ownerToRootId[msg.sender];
     }
 
+    function _isEstablishedRoot(uint256 rootId) internal view override(AttestationModule, FlagModule) returns (bool) {
+        return block.timestamp >= rootIdentities[rootId].createdAt + MIN_ROOT_AGE;
+    }
+
     // AttestationModule hooks
     function _requireTokenActive(uint256 id) internal view override(AttestationModule, FlagModule) {
         // Existence first, so unknown ids revert NotToken rather than InvalidTokenId
@@ -302,7 +306,10 @@ contract IdentitySystem is ERC721, DevFeeModule, AttestationModule, FlagModule {
 
     function _requireNotSelfAttestation(uint256 attesterRootId, uint256 tokenId) internal view override {
         uint256 ownerRootId = ownerToRootId[ownerOf(tokenId)];
-        if (attesterRootId == ownerRootId) revert Errors.CannotAttestOwnToken();
+        // The creator too, or they could park the token on another wallet, attest it and take it back
+        if (attesterRootId == ownerRootId || attesterRootId == tokens[tokenId].parentRootId) {
+            revert Errors.CannotAttestOwnToken();
+        }
     }
 
     function _incrementTotalAttestationCount(uint256 tokenId) internal override {

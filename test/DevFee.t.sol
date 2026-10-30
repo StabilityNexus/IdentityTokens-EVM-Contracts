@@ -103,6 +103,8 @@ contract DevFeeTest is Test {
         identitySystem.createRootIdentity{ value: DONATION }("alice");
         vm.prank(bob);
         identitySystem.createRootIdentity{ value: DONATION }("bob");
+        // Only established roots can flag
+        vm.warp(block.timestamp + identitySystem.MIN_ROOT_AGE());
 
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile{ value: DONATION }(_meta("alice"), _noLinks());

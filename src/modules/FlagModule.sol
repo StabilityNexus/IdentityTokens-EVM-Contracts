@@ -7,6 +7,9 @@ import { Events } from "../libraries/Events.sol";
 abstract contract FlagModule {
     uint256 internal constant MIN_ATTESTATIONS_FOR_AUTO_FLAG = 20;
 
+    // Roots younger than this can't flag or count toward auto-flag, so fresh fake roots are useless
+    uint256 public constant MIN_ROOT_AGE = 30 days;
+
     // Tracks which root identity has already flagged a given token
     mapping(uint256 => mapping(uint256 => bool)) internal _hasRootFlagged;
 
@@ -19,6 +22,7 @@ abstract contract FlagModule {
     function flagToken(uint256 tokenId) external payable {
         uint256 callerRootId = _getCallerRootId();
         if (callerRootId == 0) revert Errors.NoRootIdentity();
+        if (!_isEstablishedRoot(callerRootId)) revert Errors.RootTooNew();
 
         _requireTokenActive(tokenId);
         _requireNotSelfFlag(callerRootId, tokenId);
@@ -67,4 +71,6 @@ abstract contract FlagModule {
     function _getTotalAttestationCount(uint256 id) internal view virtual returns (uint256);
 
     function _requireNotSelfFlag(uint256 callerRootId, uint256 tokenId) internal view virtual;
+
+    function _isEstablishedRoot(uint256 rootId) internal view virtual returns (bool);
 }

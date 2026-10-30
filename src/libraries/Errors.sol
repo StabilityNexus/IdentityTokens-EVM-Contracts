@@ -47,6 +47,7 @@ library Errors {
     // Flag
     error AlreadyFlaggedByRoot();
     error CannotFlagOwnToken();
+    error RootTooNew();
 
     // Admin
     error NotAdmin();
