@@ -8,12 +8,12 @@ import { Errors } from "../../src/libraries/Errors.sol";
 import { Events } from "../../src/libraries/Events.sol";
 
 contract ProfileEditTest is BaseTest {
-    /// @dev Helper: an empty field list for updateProfile.
+    /// @dev An empty field list for updateProfile.
     function _noFields() internal pure returns (DataTypes.FieldUpdate[] memory) {
         return new DataTypes.FieldUpdate[](0);
     }
 
-    /// @dev Helper: a single-field update list.
+    /// @dev A single-field update list.
     function _field(
         DataTypes.ProfileField field,
         string memory value
@@ -22,7 +22,7 @@ contract ProfileEditTest is BaseTest {
         fields[0] = DataTypes.FieldUpdate(field, value);
     }
 
-    /// @dev Helper: a single-link update list.
+    /// @dev A single-link update list.
     function _link(
         uint32 index,
         string memory label,
@@ -259,7 +259,7 @@ contract ProfileEditTest is BaseTest {
         profileSystem.updateProfile(999, _field(DataTypes.ProfileField.NAME, "Alice"), _noLinks());
     }
 
-    function test_RevertIf_UpdateProfile_BurnedProfile() public {
+    function test_RevertIf_UpdateProfile_Burned() public {
         uint256 profileId = _profile(alice, "alice");
         vm.prank(alice);
         identitySystem.burnToken(profileId);

@@ -5,6 +5,7 @@ import { BaseTest } from "../utils/BaseTest.sol";
 import { DataTypes } from "../../src/libraries/DataTypes.sol";
 
 contract AttestationViewsTest is BaseTest {
+    /// @dev Alice's token, attested by `count` aged roots at 0x100, 0x101, ...
     function _attestedToken(uint256 count) internal returns (uint256 tokenId) {
         _root(alice, "Alice");
         tokenId = _token(alice);
@@ -35,7 +36,6 @@ contract AttestationViewsTest is BaseTest {
         _root(charlie, "Charlie");
         uint256 subId = _token(alice);
 
-        // Two attestations
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
         vm.prank(charlie);
@@ -43,11 +43,11 @@ contract AttestationViewsTest is BaseTest {
 
         assertEq(identitySystem.getActiveAttestationCount(subId), 2);
 
-        // Bob's 1-year attestation expires
+        // Bob's 1-year attestation expires, Charlie's 3-year one remains
         vm.warp(block.timestamp + 366 days);
-        assertEq(identitySystem.getActiveAttestationCount(subId), 1); // only Charlie's 3-year remains
+        assertEq(identitySystem.getActiveAttestationCount(subId), 1);
 
-        // Charlie's 3-year attestation expires
+        // Charlie's expires too
         vm.warp(block.timestamp + 3 * 365 days);
         assertEq(identitySystem.getActiveAttestationCount(subId), 0);
     }
@@ -102,7 +102,6 @@ contract AttestationViewsTest is BaseTest {
         vm.prank(bob);
         identitySystem.attestToken(subId, 365 days);
 
-        // Warp past expiry
         vm.warp(block.timestamp + 366 days);
 
         uint256[] memory attested = identitySystem.getAttestationsByAttester(identitySystem.ownerToRootId(bob));
@@ -194,9 +193,8 @@ contract AttestationViewsTest is BaseTest {
         assertEq(page[0].attestation.revokedAt, 0);
     }
 
-    /// @dev A profile is optional and separate from attesting. Whether the
-    ///      attester holds one must make no difference to what this view
-    ///      returns -- the name shown is always the root display name.
+    /// @dev A profile is optional and separate from attesting, so the name shown is always
+    ///      the root display name.
     function test_GetAttestersDetailed_IgnoresAttesterProfile() public {
         _root(alice, "Alice");
         uint256 tokenId = _token(alice);
@@ -277,10 +275,9 @@ contract AttestationViewsTest is BaseTest {
         assertEq(page.length, 0);
     }
 
-    /// @dev The attesters list has to carry enough to open an attester's wallet
-    ///      view: the address it returns must resolve to that wallet's own
-    ///      tokens and root identity, without touching their profile.
-    function test_GetAttestersDetailed_WalletResolvesToAttestersOwnTokens() public {
+    /// @dev The address in the list must be enough to open the attester's wallet view:
+    ///      their own tokens and root identity, without their profile.
+    function test_GetAttestersDetailed_ResolvesAttesterWallet() public {
         _root(alice, "Alice");
         uint256 aliceToken = _token(alice);
         _root(bob, "John");

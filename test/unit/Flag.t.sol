@@ -6,7 +6,7 @@ import { Errors } from "../../src/libraries/Errors.sol";
 import { Events } from "../../src/libraries/Events.sol";
 
 contract FlagTest is BaseTest {
-    function test_FlagToken_IncrementsFlagCount_ButNotIsFlagged() public {
+    function test_FlagToken_OnlyIncrementsFlagCount() public {
         _root(alice, "Alice");
         _root(bob, "Bob");
         _ageRoots();
@@ -16,8 +16,8 @@ contract FlagTest is BaseTest {
         identitySystem.flagToken(subId);
 
         (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.tokens(subId);
-        assertFalse(isFlagged); // Manual flag does NOT set isFlagged
-        assertEq(flagCount, 1); // But flagCount is incremented for analytics
+        assertFalse(isFlagged); // only auto-flag sets isFlagged
+        assertEq(flagCount, 1);
     }
 
     function test_FlagToken_EmitsEvent() public {
@@ -47,18 +47,17 @@ contract FlagTest is BaseTest {
         identitySystem.flagToken(subId);
 
         (, , , , , , , , , , bool isFlagged, uint256 flagCount, ) = identitySystem.tokens(subId);
-        assertFalse(isFlagged); // Still not flagged — manual only
+        assertFalse(isFlagged);
         assertEq(flagCount, 2);
     }
 
-    function test_ProfileFlagging() public {
+    function test_FlagToken_Profile() public {
         _root(alice, "Alice");
         _root(bob, "Bob");
         _ageRoots();
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
-        // Bob can flag Alice's profile token
         vm.prank(bob);
         identitySystem.flagToken(profileId);
 
@@ -66,7 +65,7 @@ contract FlagTest is BaseTest {
         assertEq(flagCount, 1);
     }
 
-    function test_RevertIf_FlagToken_DuplicateByRoot() public {
+    function test_RevertIf_FlagToken_AlreadyFlagged() public {
         _root(alice, "Alice");
         _root(bob, "Bob");
         _ageRoots();
@@ -144,10 +143,10 @@ contract FlagTest is BaseTest {
         _root(alice, "Alice");
         uint256 subId = _token(alice);
 
-        // 21 attestations from 21 different users — exceeds MIN_ATTESTATIONS_FOR_AUTO_FLAG (20)
+        // 21 attesters, above the 20 that auto-flag needs
         _createAttesters(subId, 100, 21, 365 days);
 
-        // Revoke 7 of the 21 attestations → 7*3 = 21 >= 21 → triggers auto-flag
+        // 7 of 21 revoke: 7 * 3 >= 21, so the token is flagged
         for (uint256 i = 0; i < 7; i++) {
             address attester = address(uint160(100 + i));
             vm.prank(attester);
@@ -159,14 +158,14 @@ contract FlagTest is BaseTest {
         assertEq(flagCount, 1);
     }
 
-    function test_AutoFlag_DoesNotTrigger_BelowMinAttestations() public {
+    function test_AutoFlag_SkippedBelowMinAttestations() public {
         _root(alice, "Alice");
         uint256 subId = _token(alice);
 
-        // Only 3 attestations — below the MIN_ATTESTATIONS_FOR_AUTO_FLAG (20)
+        // 3 attesters, below the 20 that auto-flag needs
         _createAttesters(subId, 200, 3, 365 days);
 
-        // Revoke all 3 — would exceed 1/3 threshold, but floor blocks it
+        // All 3 revoke: past the 1/3 ratio, but under the minimum
         for (uint256 i = 0; i < 3; i++) {
             address attester = address(uint160(200 + i));
             vm.prank(attester);
@@ -177,24 +176,23 @@ contract FlagTest is BaseTest {
         assertFalse(isFlagged);
     }
 
-    function test_ManualFlag_DoesNotBlock_AutoFlag() public {
+    function test_AutoFlag_AfterManualFlag() public {
         _root(alice, "Alice");
         _root(bob, "Bob");
         _root(charlie, "Charlie");
         uint256 subId = _token(alice);
 
-        // 20 attestations from 20 different users (meets minimum floor)
+        // 20 attesters, exactly the minimum
         _createAttesters(subId, 300, 20, 365 days);
 
-        // Charlie manually flags (flagCount = 1, isFlagged = false)
         vm.prank(charlie);
         identitySystem.flagToken(subId);
 
         (, , , , , , , , , , bool isFlaggedBefore, uint256 flagCountBefore, ) = identitySystem.tokens(subId);
-        assertFalse(isFlaggedBefore); // Manual flag does NOT set isFlagged
+        assertFalse(isFlaggedBefore);
         assertEq(flagCountBefore, 1);
 
-        // Revoke 7 of 20 → 7*3 = 21 >= 20 → auto-flag triggers (flagCount = 2, isFlagged = true)
+        // 7 of 20 revoke: 7 * 3 >= 20, so auto-flag still fires
         for (uint256 i = 0; i < 7; i++) {
             address attester = address(uint160(300 + i));
             vm.prank(attester);
@@ -202,11 +200,11 @@ contract FlagTest is BaseTest {
         }
 
         (, , , , , , , , , , bool isFlaggedAfter, uint256 flagCountAfter, ) = identitySystem.tokens(subId);
-        assertTrue(isFlaggedAfter); // NOW isFlagged is true (auto-flag consensus)
-        assertEq(flagCountAfter, 2); // manual (1) + auto (1) = 2
+        assertTrue(isFlaggedAfter);
+        assertEq(flagCountAfter, 2); // 1 manual + 1 auto
     }
 
-    function test_AutoFlag_FreshRootsCannotForceFlag() public {
+    function test_AutoFlag_IgnoresFreshRoots() public {
         _root(alice, "Alice");
         uint256 subId = _token(alice);
 

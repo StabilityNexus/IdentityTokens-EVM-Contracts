@@ -72,19 +72,16 @@ contract TokenTest is BaseTest {
         _root(bob, "Bob");
         uint256 subId = _token(alice);
 
-        // Bob attests with 3-year validity
         vm.prank(bob);
         identitySystem.attestToken(subId, 3 * 365 days);
 
-        // Before transfer: 1 active attestation
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
         assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
-        // Transfer — attestations persist (passport model)
+        // Attestations stay with the token (passport model)
         vm.prank(alice);
         identitySystem.transferToken(subId, charlie);
 
-        // After transfer: attestation still active
         assertEq(identitySystem.getActiveAttestationCount(subId), 1);
         assertTrue(identitySystem.hasAttested(identitySystem.ownerToRootId(bob), subId));
 
@@ -102,7 +99,7 @@ contract TokenTest is BaseTest {
         identitySystem.transferToken(subId, bob);
     }
 
-    function test_RevertIf_TransferRootToken() public {
+    function test_RevertIf_TransferToken_Root() public {
         uint256 rootId = _root(alice, "Alice");
 
         vm.prank(alice);
@@ -178,19 +175,19 @@ contract TokenTest is BaseTest {
 
     function test_BurnToken_RemovesFromRootTokenList() public {
         _root(alice, "Alice");
-        uint256 subId1 = _token(alice);
+        uint256 burnedId = _token(alice);
         vm.prank(alice);
-        uint256 subId2 = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
+        uint256 keptId = identitySystem.createToken("Twitter", "social", bytes(""), "", 0);
 
         uint256[] memory subsBefore = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
         assertEq(subsBefore.length, 2);
 
         vm.prank(alice);
-        identitySystem.burnToken(subId1);
+        identitySystem.burnToken(burnedId);
 
         uint256[] memory subsAfter = identitySystem.getTokensForRoot(identitySystem.ownerToRootId(alice));
         assertEq(subsAfter.length, 1);
-        assertEq(subsAfter[0], subId2);
+        assertEq(subsAfter[0], keptId);
 
         DataTypes.RootIdentityView memory rootView = identitySystem.getRootIdentityView(
             identitySystem.ownerToRootId(alice)
@@ -198,7 +195,7 @@ contract TokenTest is BaseTest {
         assertEq(rootView.tokenCount, 1);
     }
 
-    function test_BurnToken_RemovesFromRootTokenList_SingleToken() public {
+    function test_BurnToken_EmptiesRootTokenList() public {
         _root(alice, "Alice");
         uint256 subId = _token(alice);
 

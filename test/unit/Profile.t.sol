@@ -108,7 +108,7 @@ contract ProfileTest is BaseTest {
         vm.prank(alice);
         profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
-        // same username "alice"
+        // Same username as Alice
         vm.prank(bob);
         vm.expectRevert(Errors.ProfileUsernameTaken.selector);
         profileSystem.createProfile(_meta("Bob", "alice"), _noLinks());
@@ -124,12 +124,12 @@ contract ProfileTest is BaseTest {
         profileSystem.createProfile(_meta("Alice", "alice2"), _noLinks());
     }
 
-    function test_ProfileTransfer_Success() public {
+    function test_TransferToken_Profile() public {
         _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
-        // Transfer to bob (who has no profile)
+        // Bob has no profile yet
         vm.prank(alice);
         identitySystem.transferToken(profileId, bob);
 
@@ -137,12 +137,11 @@ contract ProfileTest is BaseTest {
         assertFalse(identitySystem.hasProfile(alice));
         assertTrue(identitySystem.hasProfile(bob));
 
-        // Alice's hasMintedProfile remains true — she can never mint again
+        // Alice can never mint again
         assertTrue(profileSystem.hasMintedProfile(alice));
     }
 
-    function test_ProfileTransfer_PreventsRecipientDuplicateProfile() public {
-        // Alice creates root + profile
+    function test_RevertIf_TransferToken_RecipientHasProfile() public {
         _root(alice, "Alice");
         _root(bob, "Bob");
         vm.prank(alice);
@@ -150,27 +149,25 @@ contract ProfileTest is BaseTest {
         vm.prank(bob);
         profileSystem.createProfile(_meta("Bob", "bob_x"), _noLinks());
 
-        // Alice tries to transfer her profile to Bob who already has one
         vm.prank(alice);
         vm.expectRevert(Errors.RecipientAlreadyHasProfile.selector);
         identitySystem.transferToken(aliceProfileId, bob);
     }
 
-    function test_ProfileMintGuard_PersistsAfterTransfer() public {
+    function test_RevertIf_CreateProfile_AfterTransfer() public {
         _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _noLinks());
 
-        // Transfer away
         vm.prank(alice);
         identitySystem.transferToken(profileId, bob);
 
-        // Alice tries to mint a new profile — should be permanently blocked
+        // Alice gave hers away, but the mint guard is permanent
         vm.prank(alice);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
         profileSystem.createProfile(_meta("Alice", "alice2"), _noLinks());
 
-        // Bob tries to mint a profile — should be blocked because he already holds one
+        // Bob now holds one
         vm.prank(bob);
         vm.expectRevert(Errors.AlreadyMintedProfile.selector);
         profileSystem.createProfile(_meta("Alice", "bob"), _noLinks());
@@ -227,7 +224,7 @@ contract ProfileTest is BaseTest {
         assertEq(identitySystem.getProfileTokenId(alice), 0);
     }
 
-    function test_BurnProfile_HidesLinks() public {
+    function test_BurnToken_ProfileHidesLinks() public {
         _root(alice, "Alice");
         vm.prank(alice);
         uint256 profileId = profileSystem.createProfile(_meta("Alice", "alice"), _numberedLinks(3));

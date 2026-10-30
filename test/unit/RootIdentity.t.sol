@@ -16,7 +16,7 @@ contract RootIdentityTest is BaseTest {
         assertEq(uint8(identitySystem.tokenTypeOf(rootId)), uint8(DataTypes.TokenType.ROOT));
     }
 
-    function test_CreateRootIdentity_WithEmptyDisplayName() public {
+    function test_CreateRootIdentity_EmptyDisplayName() public {
         vm.prank(alice);
         uint256 rootId = identitySystem.createRootIdentity("");
 
