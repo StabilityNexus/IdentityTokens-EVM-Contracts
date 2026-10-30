@@ -18,7 +18,7 @@ contract IdentitySystemTest is Test {
     address public charlie = address(0x3);
 
     function setUp() public {
-        identitySystem = new IdentitySystem();
+        identitySystem = new IdentitySystem(address(0xDE7), address(0xFEE), 100);
         profileSystem = new ProfileSystem(address(identitySystem));
         identitySystem.setProfileSystem(address(profileSystem));
     }

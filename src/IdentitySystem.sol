@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
 import { AttestationModule } from "./modules/AttestationModule.sol";
+import { DevFeeModule } from "./modules/DevFeeModule.sol";
 import { FlagModule } from "./modules/FlagModule.sol";
 import { DataTypes } from "./libraries/DataTypes.sol";
 import { Errors } from "./libraries/Errors.sol";
@@ -11,6 +12,7 @@ import { Events } from "./libraries/Events.sol";
 
 interface IProfileSystem {
     function cleanupBurnedProfile(uint256 tokenId) external;
+    function sweepDevFees(address to) external;
 }
 
 /**
@@ -18,10 +20,10 @@ interface IProfileSystem {
  * @notice Decentralised identity with soulbound roots, transferable
  *         tokens, time-based attestations, revocation and flagging.
  *         Inheritance chain:
- *           ERC721 → AttestationModule → FlagModule
+ *           ERC721 → DevFeeModule → AttestationModule → FlagModule
  *         All abstract hooks from every module are resolved here.
  */
-contract IdentitySystem is ERC721, AttestationModule, FlagModule {
+contract IdentitySystem is ERC721, DevFeeModule, AttestationModule, FlagModule {
     // id = (type + 1) * SERIAL_SPACE + 10 scrambled digits, shown as id-/tk-/pf- + the digits
     uint256 internal constant SERIAL_SPACE = 1e10;
     uint256 private constant MIX = 6_180_339_887; // coprime with 1e10, so serial -> digits is one-to-one
@@ -58,7 +60,11 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
     // Transfer control flags — prevent raw ERC721 transfers
     bool private _internalTransferActive;
 
-    constructor() ERC721("Decentralized-Identity-Tokens", "DIT") {
+    constructor(
+        address _dev,
+        address _devFeeReceiver,
+        uint256 _devFee
+    ) ERC721("Decentralized-Identity-Tokens", "DIT") DevFeeModule(_dev, _devFeeReceiver, _devFee) {
         admin = msg.sender;
     }
 
@@ -76,9 +82,20 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         emit Events.ProfileSystemSet(_profileSystem);
     }
 
+    // Sends the donations held here and in ProfileSystem to devFeeReceiver
+    function withdrawDevFees() external onlyDev {
+        uint256 own = address(this).balance;
+        uint256 profileShare = profileSystem == address(0) ? 0 : profileSystem.balance;
+        emit Events.DevFeesWithdrawn(devFeeReceiver, own + profileShare);
+
+        if (profileShare != 0) IProfileSystem(profileSystem).sweepDevFees(devFeeReceiver);
+        (bool ok, ) = devFeeReceiver.call{ value: own }("");
+        if (!ok) revert Errors.DevFeeTransferFailed();
+    }
+
     // Root Identity
 
-    function createRootIdentity(string calldata displayName) external returns (uint256) {
+    function createRootIdentity(string calldata displayName) external payable returns (uint256) {
         if (ownerToRootId[msg.sender] != 0) revert Errors.AlreadyHasRoot();
 
         uint256 rootId = _nextId(DataTypes.TokenType.ROOT);
@@ -148,7 +165,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         bytes calldata tokenValue,
         string calldata about,
         uint256 validUntil
-    ) external returns (uint256) {
+    ) external payable returns (uint256) {
         uint256 rootId = ownerToRootId[msg.sender];
         if (rootId == 0) revert Errors.NoRootIdentity();
         if (!rootIdentities[rootId].isActive) revert Errors.RootDeactivated();
@@ -183,7 +200,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         return tokenId;
     }
 
-    function transferToken(uint256 tokenId, address sendingTo) external {
+    function transferToken(uint256 tokenId, address sendingTo) external payable {
         if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
         if (tokenTypeOf(tokenId) == DataTypes.TokenType.ROOT) revert Errors.CannotTransferRoot();
         if (sendingTo == msg.sender) revert Errors.SelfTransfer();
@@ -218,7 +235,7 @@ contract IdentitySystem is ERC721, AttestationModule, FlagModule {
         emit Events.TokenTransferred(tokenId, msg.sender, sendingTo);
     }
 
-    function burnToken(uint256 tokenId) external {
+    function burnToken(uint256 tokenId) external payable {
         if (ownerOf(tokenId) != msg.sender) revert Errors.NotHolder();
         if (tokenTypeOf(tokenId) == DataTypes.TokenType.ROOT) revert Errors.NotToken();
 

@@ -19,7 +19,7 @@ abstract contract FlagModule {
 
     // Manual Flagging
 
-    function flagToken(uint256 tokenId) external {
+    function flagToken(uint256 tokenId) external payable {
         uint256 callerRootId = _getCallerRootId();
         if (callerRootId == 0) revert Errors.NoRootIdentity();
         if (!_isEstablishedRoot(callerRootId)) revert Errors.RootTooNew();

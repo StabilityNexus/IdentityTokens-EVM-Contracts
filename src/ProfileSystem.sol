@@ -40,7 +40,7 @@ contract ProfileSystem {
     function createProfile(
         DataTypes.ProfileMetadata calldata data,
         DataTypes.LinkUpdate[] calldata links
-    ) external returns (uint256) {
+    ) external payable returns (uint256) {
         if (bytes(data.name).length == 0) revert Errors.ProfileNameRequired();
         if (bytes(data.username).length < 3) revert Errors.ProfileUsernameTooShort();
         if (bytes(data.username).length > 32) revert Errors.ProfileUsernameTooLong();
@@ -84,7 +84,7 @@ contract ProfileSystem {
         uint256 tokenId,
         DataTypes.FieldUpdate[] calldata fields,
         DataTypes.LinkUpdate[] calldata links
-    ) external {
+    ) external payable {
         DataTypes.ProfileMetadata storage profile = profiles[tokenId];
         // Every profile has a username, so an empty one means burned, never created, or not a profile token
         if (bytes(profile.username).length == 0) revert Errors.ProfileNotFound();
@@ -117,6 +117,15 @@ contract ProfileSystem {
         delete profiles[tokenId];
 
         // Note: hasMintedProfile stays true — permanent mint guard (user already used their one-time mint)
+    }
+
+    // Dev Fee (settings live in IdentitySystem, which withdraws through here)
+
+    function sweepDevFees(address to) external {
+        if (msg.sender != address(identitySystem)) revert Errors.OnlyIdentitySystem();
+
+        (bool ok, ) = to.call{ value: address(this).balance }("");
+        if (!ok) revert Errors.DevFeeTransferFailed();
     }
 
     // View Functions

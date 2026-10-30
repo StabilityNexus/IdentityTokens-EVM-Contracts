@@ -13,7 +13,7 @@ contract Deploy is Script {
 
         vm.startBroadcast(config.deployerKey);
 
-        IdentitySystem identitySystem = new IdentitySystem();
+        IdentitySystem identitySystem = new IdentitySystem(config.dev, config.devFeeReceiver, config.devFee);
 
         ProfileSystem profileSystem = new ProfileSystem(address(identitySystem));
 

@@ -29,4 +29,15 @@ library Events {
 
     // Admin
     event ProfileSystemSet(address indexed profileSystem);
+
+    // Dev fee
+    event DevFeeSet(uint256 devFee);
+
+    event DevFeeReceiverSet(address indexed receiver);
+
+    event DevTransferProposed(address indexed dev, address indexed pendingDev);
+
+    event DevTransferred(address indexed previousDev, address indexed newDev);
+
+    event DevFeesWithdrawn(address indexed receiver, uint256 amount);
 }

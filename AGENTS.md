@@ -12,21 +12,25 @@ IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockc
 ### Core Architecture & Directory Map
 
 - **`src/` — Core Smart Contracts**
-  - [`src/IdentitySystem.sol`](/contracts/src/IdentitySystem.sol): Core contract inheriting `ERC721`, [`AttestationModule`](/contracts/src/modules/AttestationModule.sol), and [`FlagModule`](/contracts/src/modules/FlagModule.sol). Manages soulbound root identities, sub-token issuance, transfer permissions, wallet/root token indexing, on-chain `tokenURI` labels, and integration with `ProfileSystem`.
+  - [`src/IdentitySystem.sol`](/contracts/src/IdentitySystem.sol): Core contract inheriting `ERC721`, [`DevFeeModule`](/contracts/src/modules/DevFeeModule.sol), [`AttestationModule`](/contracts/src/modules/AttestationModule.sol), and [`FlagModule`](/contracts/src/modules/FlagModule.sol). Manages soulbound root identities, sub-token issuance, transfer permissions, wallet/root token indexing, on-chain `tokenURI` labels, and integration with `ProfileSystem`.
     - **Token IDs:** each type has its own counter (`minted[TokenType]`). `id = (type + 1) * 1e10 + (serial * MIX + type * SALT) % 1e10`, so `tokenTypeOf(id)` decodes the type with no storage, and `formatTokenId(id)` gives the UI form `id-`/`tk-`/`pf-` + 10 digits (e.g. `29321932540` → `tk-9321932540`). The frontend mirrors this in `dit/lib/tokenId.ts`.
   - [`src/ProfileSystem.sol`](/contracts/src/ProfileSystem.sol): Standalone system for profile metadata management, username registration/validation (`a-z`, `0-9`, `.`, `_`), profile metadata mapping (`DataTypes.ProfileMetadata`), per-field and per-link edits via `updateProfile` (username is permanent), an unbounded custom-link list edited by index and read in pages (`getLinks`), and username/metadata release upon token burn (links stay in storage, but `getLinks` returns nothing for a burned profile).
+  - [`src/modules/DevFeeModule.sol`](/contracts/src/modules/DevFeeModule.sol): Abstract module for the optional donation to AOSSIE. Every user action in both contracts is `payable` and accepts any amount; the ETH stays in the contract. `devFee` is a percentage of the transaction's gas fee (100 = equal to it, capped at `MAX_DEV_FEE` = 5000) that frontends use to compute the donation. Only `dev` can `setDevFee`, `setDevFeeReceiver`, hand the role over with `proposeDev` → `acceptDev`, and call `IdentitySystem.withdrawDevFees()`, which also sweeps `ProfileSystem` (`sweepDevFees`) and sends everything to `devFeeReceiver`.
   - [`src/modules/AttestationModule.sol`](/contracts/src/modules/AttestationModule.sol): Abstract module handling time-bound peer attestations (up to 3 years max), attestation clamping based on token expiration, active attestation queries, and revocations. Neither a token's creator nor its current holder can attest it.
   - [`src/modules/FlagModule.sol`](/contracts/src/modules/FlagModule.sol): Abstract module managing manual flagging by root identities and automated flagging on revocation (auto-flags once when a token has at least 20 lifetime attesters and at least 1/3 of them have revoked; manual flags only increment `flagCount`). Only roots at least `MIN_ROOT_AGE` (30 days) old can flag, and only their attestations and revokes count toward auto-flag.
   - [`src/libraries/DataTypes.sol`](/contracts/src/libraries/DataTypes.sol): Shared data structures: `TokenType` enum (`ROOT`, `SUB`, `PROFILE`), `RootIdentity`, `Token`, `RootIdentityView`, `Attestation`, `AttesterView`, `ProfileMetadata`, and the profile-edit types `ProfileField`, `FieldUpdate`, `ProfileLink`, `LinkUpdate`.
-  - [`src/libraries/Errors.sol`](/contracts/src/libraries/Errors.sol): Centralized custom Solidity error definitions organized by subsystem (Transfer, Identity, Profile, Token, Attestation, Flag, Admin).
-  - [`src/libraries/Events.sol`](/contracts/src/libraries/Events.sol): Centralized Solidity event declarations (`RootIdentityCreated`, `ProfileCreated`, `ProfileUpdated`, `TokenCreated`, `TokenTransferred`, `TokenBurned`, `AttestationGiven`, `AttestationRevoked`, `TokenFlagged`, `TokenAutoFlagged`, `ProfileSystemSet`).
+  - [`src/libraries/Errors.sol`](/contracts/src/libraries/Errors.sol): Centralized custom Solidity error definitions organized by subsystem (Transfer, Identity, Profile, Token, Attestation, Flag, Admin, Dev fee).
+  - [`src/libraries/Events.sol`](/contracts/src/libraries/Events.sol): Centralized Solidity event declarations (`RootIdentityCreated`, `ProfileCreated`, `ProfileUpdated`, `TokenCreated`, `TokenTransferred`, `TokenBurned`, `AttestationGiven`, `AttestationRevoked`, `TokenFlagged`, `TokenAutoFlagged`, `ProfileSystemSet`, `DevFeeSet`, `DevFeeReceiverSet`, `DevTransferProposed`, `DevTransferred`, `DevFeesWithdrawn`).
 
 - **`script/` — Deployment & Maintenance**
   - [`script/Deploy.s.sol`](/contracts/script/Deploy.s.sol): Foundry deployment script deploying `IdentitySystem` and `ProfileSystem`, and wiring `setProfileSystem`.
-  - [`script/HelperConfig.s.sol`](/contracts/script/HelperConfig.s.sol): Environment and network configuration helper.
+  - [`script/HelperConfig.s.sol`](/contracts/script/HelperConfig.s.sol): Network configuration. Anvil (31337) uses fixed local accounts; any other chain reads `PRIVATE_KEY`, plus optional `DEV`, `DEV_FEE_RECEIVER` (both default to the AOSSIE wallet) and `DEV_FEE` (default 100).
 
 - **`test/` — Automated Test Suite**
-  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 107 unit, integration, and fuzz tests covering all contract flows and edge cases.
+  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 119 unit, integration, and fuzz tests covering all contract flows and edge cases.
+  - [`test/DevFee.t.sol`](/contracts/test/DevFee.t.sol): Donations, withdrawal, dev-only settings and the two-step dev handover.
+  - [`test/Deploy.t.sol`](/contracts/test/Deploy.t.sol): Runs `Deploy` on Anvil and checks `HelperConfig` reads the deployer key and dev-fee settings from the environment on other chains.
+  - [`test/EvmCompat.t.sol`](/contracts/test/EvmCompat.t.sol): Fails if the deployed code uses an opcode Ethereum Classic lacks (Cancun's `MCOPY`, `TLOAD`, `TSTORE`, `BLOBHASH`, `BLOBBASEFEE`).
 
 - **`docs/` — System Workflows**
   - [`docs/WORKFLOWS.md`](/contracts/docs/WORKFLOWS.md): Visual and structural workflow guides.
@@ -71,6 +75,9 @@ RPC_URL=https://...                   # Network RPC URL (e.g. Sepolia or mainnet
 SEPOLIA_RPC_URL=https://...           # Sepolia RPC URL
 IDENTITY_SYSTEM_ADDRESS=0x...         # Address of deployed IdentitySystem contract
 PROFILE_SYSTEM_ADDRESS=0x...          # Address of deployed ProfileSystem contract
+DEV=0x...                             # Optional: dev role (default: AOSSIE wallet)
+DEV_FEE_RECEIVER=0x...                # Optional: where withdrawn donations go (default: AOSSIE wallet)
+DEV_FEE=100                           # Optional: donation as a percent of the gas fee, at most 5000 (default: 100)
 ```
 
 ---
@@ -163,6 +170,13 @@ PROFILE_SYSTEM_ADDRESS=0x...          # Address of deployed ProfileSystem contra
   # or:
   npm run deploy
   ```
+  The script is chain agnostic: `RPC_URL` picks the chain (Ethereum, Ethereum Classic, or a testnet such as Sepolia or Mordor). Each chain gets its own independent deployment, with its own `dev`, `devFee` and donations. Extra `forge script` flags go in `FLAGS`:
+  ```bash
+  # Ethereum: verify on Etherscan
+  make deploy FLAGS="--verify"
+  # Ethereum Classic has no EIP-1559, so send legacy transactions; verify on Blockscout
+  make deploy FLAGS="--legacy --verify --verifier blockscout --verifier-url https://etc.blockscout.com/api/"
+  ```
 
 ---
 
@@ -251,6 +265,8 @@ Follow Conventional Commits:
 - **DO** document all external/public functions using standard NatSpec comments (`@notice`, `@param`, `@return`).
 - **DO** enforce strict username rules: 3–32 chars, restricted to lowercase `a-z`, `0-9`, `.`, `_`.
 - **DO** keep error definitions in `Errors.sol` and event definitions in `Events.sol`.
+- **DO** make every new user action `payable`, so it can carry the optional donation (any amount).
+- **DO** keep `test/EvmCompat.t.sol` passing: OpenZeppelin 5.5 needs `evm_version = cancun` to compile, but the deployed code must also run on Ethereum Classic, which stops at Shanghai.
 
 ### DON'Ts
 - **DON'T** edit auto-generated build files or directories ([`out/`](/contracts/out), [`cache/`](/contracts/cache), [`broadcast/`](/contracts/broadcast)).
