@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 import { Test } from "forge-std/Test.sol";
-import { IdentitySystem } from "../src/IdentitySystem.sol";
-import { ProfileSystem } from "../src/ProfileSystem.sol";
+import { IdentitySystem } from "../../src/IdentitySystem.sol";
+import { ProfileSystem } from "../../src/ProfileSystem.sol";
 
 // Ethereum Classic stops at Shanghai, so the deployed code must not use the opcodes Cancun added.
 // OpenZeppelin needs evm_version = cancun to compile, which is fine while the optimizer leaves them out.

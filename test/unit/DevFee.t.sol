@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 import { Test } from "forge-std/Test.sol";
-import { IdentitySystem } from "../src/IdentitySystem.sol";
-import { ProfileSystem } from "../src/ProfileSystem.sol";
-import { DataTypes } from "../src/libraries/DataTypes.sol";
-import { Errors } from "../src/libraries/Errors.sol";
-import { Events } from "../src/libraries/Events.sol";
+import { IdentitySystem } from "../../src/IdentitySystem.sol";
+import { ProfileSystem } from "../../src/ProfileSystem.sol";
+import { DataTypes } from "../../src/libraries/DataTypes.sol";
+import { Errors } from "../../src/libraries/Errors.sol";
+import { Events } from "../../src/libraries/Events.sol";
 
 // A receiver with no receive/fallback, so any ETH sent to it reverts
 contract RejectsEther {}
@@ -67,10 +67,6 @@ contract DevFeeTest is Test {
         return 3 * DONATION;
     }
 
-    // =========================================================================
-    // Constructor
-    // =========================================================================
-
     function test_Constructor_SetsDevFeeConfig() public view {
         assertEq(identitySystem.dev(), dev);
         assertEq(identitySystem.pendingDev(), address(0));
@@ -93,10 +89,6 @@ contract DevFeeTest is Test {
         vm.expectRevert(Errors.DevFeeTooHigh.selector);
         new IdentitySystem(dev, receiver, tooHigh);
     }
-
-    // =========================================================================
-    // Donating
-    // =========================================================================
 
     function test_PaidActions_CollectDonations() public {
         vm.prank(alice);
@@ -146,10 +138,6 @@ contract DevFeeTest is Test {
         identitySystem.createRootIdentity{ value: value }("alice");
         assertEq(address(identitySystem).balance, value);
     }
-
-    // =========================================================================
-    // Withdrawing
-    // =========================================================================
 
     function test_WithdrawDevFees_SweepsBothContracts() public {
         uint256 total = _collectDonations();
@@ -227,10 +215,6 @@ contract DevFeeTest is Test {
         profileSystem.sweepDevFees(dev);
     }
 
-    // =========================================================================
-    // Settings
-    // =========================================================================
-
     function test_SetDevFee() public {
         uint256 newFee = identitySystem.MAX_DEV_FEE();
         vm.expectEmit(false, false, false, true, address(identitySystem));
@@ -274,10 +258,6 @@ contract DevFeeTest is Test {
         vm.prank(alice);
         identitySystem.setDevFeeReceiver(alice);
     }
-
-    // =========================================================================
-    // Handing over the dev role
-    // =========================================================================
 
     function test_ProposeAndAcceptDev() public {
         uint256 total = _collectDonations();

@@ -27,10 +27,10 @@ IdentityTokens-EVM is a decentralized identity protocol on EVM-compatible blockc
   - [`script/HelperConfig.s.sol`](/contracts/script/HelperConfig.s.sol): Network configuration. Anvil (31337) uses fixed local accounts; any other chain reads `PRIVATE_KEY`, plus optional `DEV`, `DEV_FEE_RECEIVER` (both default to the AOSSIE wallet) and `DEV_FEE` (default 100).
 
 - **`test/` — Automated Test Suite**
-  - [`test/IdentityToken.t.sol`](/contracts/test/IdentityToken.t.sol): Comprehensive test suite containing 119 unit, integration, and fuzz tests covering all contract flows and edge cases.
-  - [`test/DevFee.t.sol`](/contracts/test/DevFee.t.sol): Donations, withdrawal, dev-only settings and the two-step dev handover.
-  - [`test/Deploy.t.sol`](/contracts/test/Deploy.t.sol): Runs `Deploy` on Anvil and checks `HelperConfig` reads the deployer key and dev-fee settings from the environment on other chains.
-  - [`test/EvmCompat.t.sol`](/contracts/test/EvmCompat.t.sol): Fails if the deployed code uses an opcode Ethereum Classic lacks (Cancun's `MCOPY`, `TLOAD`, `TSTORE`, `BLOBHASH`, `BLOBBASEFEE`).
+  - [`test/utils/BaseTest.sol`](/contracts/test/utils/BaseTest.sol): Shared `setUp` that deploys and wires both contracts, plus small helpers (`_root`, `_token`, `_profile`, `_meta`, `_ageRoots`, `_createAttesters`).
+  - [`test/unit/`](/contracts/test/unit): One file per feature: `RootIdentity`, `Token`, `TokenIds`, `Attestation`, `AttestationViews`, `Flag`, `Profile`, `ProfileEdit` and `DevFee` (donations, withdrawal, dev-only settings and the two-step dev handover).
+  - [`test/integration/Deploy.t.sol`](/contracts/test/integration/Deploy.t.sol): Runs `Deploy` on Anvil and checks `HelperConfig` reads the deployer key and dev-fee settings from the environment on other chains.
+  - [`test/integration/EvmCompat.t.sol`](/contracts/test/integration/EvmCompat.t.sol): Fails if the deployed code uses an opcode Ethereum Classic lacks (Cancun's `MCOPY`, `TLOAD`, `TSTORE`, `BLOBHASH`, `BLOBBASEFEE`).
 
 - **`docs/` — System Workflows**
   - [`docs/WORKFLOWS.md`](/contracts/docs/WORKFLOWS.md): Visual and structural workflow guides.
@@ -128,8 +128,8 @@ DEV_FEE=100                           # Optional: donation as a percent of the g
 
 - **Run tests in a single contract or file:**
   ```bash
-  forge test --match-contract IdentitySystemTest
-  forge test --match-path test/IdentityToken.t.sol
+  forge test --match-contract FlagTest
+  forge test --match-path test/unit/Flag.t.sol
   ```
 
 ### Code Formatting & Linting
@@ -210,14 +210,14 @@ DEV_FEE=100                           # Optional: donation as a percent of the g
 
 ### Framework & Setup
 - Primary framework is **Foundry** (`forge-std`).
-- All test contracts inherit from `Test` in `forge-std/Test.sol`.
-- Tests are located in the [`test/`](/contracts/test) directory with the file extension `.t.sol`.
+- Test contracts extend `Test` from `forge-std/Test.sol`. Unit tests do it through `BaseTest` ([`test/utils/BaseTest.sol`](/contracts/test/utils/BaseTest.sol)), which holds the shared setup and helpers.
+- Tests live in [`test/unit/`](/contracts/test/unit) (one file per feature) and [`test/integration/`](/contracts/test/integration), with the file extension `.t.sol`.
 
 ### Test Writing Conventions
 - **Success Case Tests**: `test_<FunctionName>_<Scenario>()`
   - Example: `test_CreateProfile()`, `test_AttestToken_3YearDuration()`
 - **Failure / Revert Case Tests**: `test_RevertIf_<FunctionName>_<Reason>()`
-  - Example: `test_RevertIf_CreateProfile_AlreadyMinted()`, `test_RevertIf_TransferRootToken()`
+  - Example: `test_RevertIf_CreateProfile_AlreadyMinted()`, `test_RevertIf_TransferToken_Root()`
 - **Assertions & Cheats**: Use `vm.prank(address)`, `vm.expectRevert(Errors.<ErrorName>.selector)`, `vm.expectEmit(...)`, `assertEq(...)`, `assertTrue(...)`.
 - **Fuzzing**: Standard fuzz tests run 256 iterations locally and 1000 iterations in CI (`profile.ci.fuzz`).
 
@@ -266,7 +266,7 @@ Follow Conventional Commits:
 - **DO** enforce strict username rules: 3–32 chars, restricted to lowercase `a-z`, `0-9`, `.`, `_`.
 - **DO** keep error definitions in `Errors.sol` and event definitions in `Events.sol`.
 - **DO** make every new user action `payable`, so it can carry the optional donation (any amount).
-- **DO** keep `test/EvmCompat.t.sol` passing: OpenZeppelin 5.5 needs `evm_version = cancun` to compile, but the deployed code must also run on Ethereum Classic, which stops at Shanghai.
+- **DO** keep `test/integration/EvmCompat.t.sol` passing: OpenZeppelin 5.5 needs `evm_version = cancun` to compile, but the deployed code must also run on Ethereum Classic, which stops at Shanghai.
 
 ### DON'Ts
 - **DON'T** edit auto-generated build files or directories ([`out/`](/contracts/out), [`cache/`](/contracts/cache), [`broadcast/`](/contracts/broadcast)).
